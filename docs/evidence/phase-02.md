@@ -1,0 +1,141 @@
+# Phase 02 — registry, detection and policy evidence
+
+Implementation baseline: published Phase 01 commit
+`5d6df58a6118a79e8c6b3928a4225c3aebef6b15`, branch `main`, existing origin
+`https://github.com/UsmanPrime/rootsentinel-dlp.git`. Baseline working tree was clean.
+The remote was inspected successfully before implementation and before checkpoint;
+it still referenced that baseline. No Phase 01 cryptographic source, tests, fixture
+manifest, profile or public API changed.
+
+**Local mandatory gates: PASS.** Publication and exact checkpoint IDs are recorded
+in the follow-up checkpoint evidence. Live PostgreSQL validation was unavailable
+locally because the Docker daemon pipe did not exist; no PostgreSQL service/CLI was
+found. A dedicated CI job and optional local test DSN run the same tests on PostgreSQL.
+This local report does not infer PostgreSQL parity from SQLite.
+
+## Implemented scope
+
+- `backend/app/{db,models,settings}.py`, `migrations/`: eleven tables, indexes,
+  constraints, immutable-history triggers, UTC adapter, external storage and Alembic.
+- `registry.py`: server-generated fingerprints, immutable versions, retirement,
+  revisions, actor attribution, duplicate/stale update rejection.
+- `detection.py`: indexed exact and batched block lookups, per-version interval
+  accounting, shared/repeated evidence and explicit resource limits.
+- `policy.py`, `scans.py`: deterministic precedence, policy versions and atomic
+  persistence of manifests, evidence, revision identities and decisions.
+- `auth.py`, `cli.py`: Argon2id, digest-only opaque sessions, expiration/revocation,
+  CSRF, role/ownership checks, bounded attempts and safe operator bootstrap.
+- `intake.py`, `api.py`, `schemas.py`: actual-byte bounded temporary streaming,
+  frozen buffers, strict typed REST, sanitized errors and public-mode denial.
+- `frontend/src/{api,Workbench}.tsx/ts`: real login, local synthetic registration,
+  registry/policy viewing, scans, explanation and logout; existing foundation retained.
+- New tests, optional browser harness, benchmark/export/audit/verification scripts,
+  dependency locks, CI matrix and technical documentation.
+
+There is no release/download endpoint, staging adapter, incident subsystem, HMAC
+audit chain, cloud deployment, WebSocket or CDC implementation. No scanning result
+or metric is fabricated. All evaluation responses explicitly deny release authority.
+
+## Actual verification
+
+Full sanitized outputs, environment and commands: [phase-02-checks.json](phase-02-checks.json).
+
+| Check | Observed result |
+|---|---|
+| Initial Phase 01 regression | 22 tests + 606 subtests passed |
+| Final full local pytest run | 99 tests + 606 subtests passed, 44.48 seconds |
+| New parametrized test cases | 77 beyond the 22 unchanged Phase 01 tests |
+| Synthetic manifest verification | All 11 unchanged manifests verified |
+| Fresh SQLite migration | Upgrade, repeated upgrade, disposable downgrade/re-upgrade passed |
+| Database gates | FK/index/uniqueness, immutable UPDATE/DELETE, rollback, concurrent registration/scans passed |
+| Dependency consistency | `pip check`: no broken requirements |
+| Frontend | Typecheck passed; Vite built 30 modules in 1.34 seconds |
+| Core preservation | Git diff against baseline for crypto/tests/fixture manifest empty |
+| Whitespace | `git diff --check` passed |
+| Browser | Real Chrome login/registration/scans/logout passed; desktop/mobile no overflow; zero page errors |
+
+One upstream Starlette TestClient deprecation warning advises HTTPX2; the pinned
+HTTPX client remains working. The warning is retained in evidence. An early test
+incorrectly expected thirteen tables rather than eleven application tables plus
+Alembic; it was corrected to assert the exact table names. An import in an added
+test was corrected before final verification. Neither defect required crypto changes.
+
+Tests explicitly cover exact/renamed, benign/empty, 1/1,023/1,024/1,025/10 MiB,
+single-byte edit, aligned partial/embedding, repeated/shared blocks and coverage,
+retirement/history, threshold/disable/exact precedence, unsupported profiles,
+known prefix/encoding/compression misses, session expiry/revocation/rotation,
+CSRF/Origin/Host, role/ownership, malformed names, oversized and interrupted intake,
+database errors, missing state, log-content sentinels and public arbitrary-input denial.
+
+## Browser and performance evidence
+
+[Browser assertions](phase-02-browser.json) use Chrome 156.0.8078.80 through the
+checked-in Playwright script. The ephemeral account was generated outside OneDrive;
+its password, cookie and CSRF value were never included in evidence. Existing
+services on ports 5173/8000 were preserved; dedicated loopback ports were used.
+
+[Benchmark data](phase-02-benchmark.json) contains deterministic synthetic workloads
+from 1 KiB to 10 MiB, a growing SQLite registry, three traced matching runs and 100
+policy/exact lookup samples. The latest run measured:
+
+| Input | Registration ms | Fingerprinting ms | Detection median ms with tracing | Detector queries |
+|---|---:|---:|---:|---:|
+| 1 KiB | 19.617 | 0.074 | 4.047 | 2 |
+| 64 KiB | 11.940 | 0.555 | 10.124 | 2 |
+| 1 MiB | 54.586 | 8.423 | 113.946 | 7 |
+| 10 MiB | 603.798 | 79.342 | 4,884.648 | 53 |
+
+At 10 MiB, traced Python peak was 15,591,830 bytes, cumulative database size
+3,121,152 bytes, mean exact lookup 1.05581 ms and mean pure policy evaluation
+0.0088 ms. These are warm, shared-host microbenchmarks with tracing overhead, not
+production latency, throughput or process-memory guarantees.
+
+## Security review and boundaries
+
+The reviewed implementation uses generated temporary handles, no source-path API,
+strict display labels, private external runtime paths, no SQL-parameter logging,
+generic error bodies, explicit object authorization and default-denied public mode.
+History is protected from application updates by DB triggers. Triggers are not an
+authenticated tamper-evident audit log and do not defeat a malicious DBA.
+
+Publication checks cover every tracked/non-ignored candidate, secret/private-path
+patterns, file types, ignored artifacts and staged diff review. No original DOCX,
+runtime database, real source payload, credential or generated build/dependency
+directory is intended for publication. Exact final audit results are in checkpoint
+evidence. The pattern scanner complements manual review; it is not a certification.
+
+Residual limits: fixed-block misses; equality leakage; single workspace/worker;
+serialized evaluation writes; restart-local login buckets; no deployment hardening
+or distributed DoS guarantee; trusted runtime-directory owner; no secure deletion;
+bounded evidence may return INDETERMINATE; database outages cannot preserve their
+own failed evaluations. Live PostgreSQL execution and hosted CI status must be
+reported separately when observed.
+
+## Acceptance mapping
+
+| Criterion | Evidence |
+|---|---|
+| 1 Crypto regressions preserved | Unchanged core diff, 22 tests/606 subtests |
+| 2–3 Persistent immutable registry | Registration/version/retirement/history tests and DB triggers |
+| 4–6 Exact/block/multiple-asset evidence | Fixture matrix, repetition/coverage/query-bound tests |
+| 7 Deterministic versioned policy | Strict threshold, precedence, stale version and persistence tests |
+| 8 Authentication/authorization | Role, ownership, token lifecycle, CSRF/Origin/Host and throttle tests |
+| 9 Safe bounded intake | External temp storage, stream/limit/disconnect/frozen-buffer tests |
+| 10 Migrations | Real fresh SQLite migration in every system test |
+| 11 API | Typed routes, generated OpenAPI and API integration tests |
+| 12 Browser | Real backend Playwright assertions |
+| 13 Misuse/failure tests | Security tests and explicit known-miss assertions |
+| 14 Public-data hygiene | Candidate audit, diff review and log sentinel tests |
+| 15 Checkpoint/evidence | Follow-up checkpoint artifact and Git history |
+| 16 Phase 03 interface | Separate domain services and integration contract below |
+
+## Phase 03 integration contract
+
+Reuse the immutable fingerprint profile, `register`, `detect`, `evaluate` and the
+scan unit of work. Authenticate each release request independently. Persist private
+snapshots with an explicit lifecycle rather than treating today's correlation UUID
+as a retrievable file. Bind release to the exact scanned bytes, actor, registry
+revision and policy version; fail closed or rescan if any changed. Add transfer
+state, recovery/idempotency, incident records and authenticated audit integrity.
+The current evaluation's ALLOW flag alone must never release data. No Phase 03
+implementation has begun.

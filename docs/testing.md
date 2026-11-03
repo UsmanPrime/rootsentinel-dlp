@@ -2,8 +2,8 @@
 
 ## Phase 01 commands
 
-From `backend`: `python -B -m unittest discover -s tests -v` (no dependencies).
-After installing the pinned test environment: `python -m pytest`.
+From `backend`: `python -B -m unittest tests.test_crypto tests.test_config -v` (no dependencies).
+After installing the pinned test environment: `python -m pytest` (all phases).
 From repository root: `python -B scripts/fixtures.py`.
 From `frontend`: `npm ci --ignore-scripts --no-audit --no-fund`,
 `npm run typecheck`, `npm run build`.
@@ -17,6 +17,57 @@ inputs; file mutations; ordering; and safe external path configuration.
 `scripts/fixtures.py` constructs only synthetic bytes in memory. Its default mode
 checks `fixtures/manifest.json`. `--write-manifest` deliberately updates the manifest
 but never writes payload files. Do not use that flag to hide unexplained test drift.
+
+## Phase 02 release checks
+
+From the source root, using the isolated locked environment:
+
+```sh
+python -B scripts/verify_phase02.py
+python -B scripts/export_openapi.py
+python -B scripts/audit_publication.py
+python -B scripts/benchmark_phase02.py --output docs/evidence/phase-02-benchmark.json
+```
+
+Verification records actual sanitized command output in `phase-02-checks.json`.
+The benchmark uses temporary external SQLite data, deterministic blocks, three
+matching measurements and 100 policy/exact-lookup measurements. Its traced Python
+allocation peak is not process RSS. Database file size is cumulative metadata
+storage, not a proprietary-payload store. Shared-host load and tracing affect timings.
+
+The new pytest tests cover fixed-chunk fixtures and known misses, policy precedence,
+strict thresholds, lifecycle/history, authorization/ownership, CSRF/Origin/Host,
+session expiry/revocation/rotation, login limits, frozen intake, actual-byte size
+enforcement, interrupted ASGI requests, malformed filenames, public-mode denial,
+database rollback, immutable-row triggers, concurrent registrations/scans and query
+count bounds. Every test database is created by the actual Alembic migration.
+
+Set `ROOTSENTINEL_TEST_POSTGRES_URL` to a private, dedicated test DSN to run the same
+system fixtures on both engines. It creates/drops isolated random test schemas.
+Without that setting, a passing run proves SQLite behavior only. CI includes a
+disposable PostgreSQL service; observed CI results belong in evidence, not assumptions.
+
+The test client currently emits one upstream deprecation warning for HTTPX; the
+pinned API remains operational. No warning is suppressed to hide a test failure.
+
+### Browser verification
+
+Install optional `backend/requirements-browser.lock`; use an installed Chrome. Set
+`ROOTSENTINEL_BROWSER_STATE` to a new, absolute directory outside source/OneDrive.
+In `backend`, run `python -B -m tests.browser_server`; start Vite with a matching
+`ROOTSENTINEL_ORIGIN` (and proxy port if changed). From root run
+`python -B scripts/browser_check.py` with the same state/origin variables.
+
+The harness creates random, temporary local credentials without printing them.
+The browser script reads them privately, exercises actual login/registration/scans/
+logout and writes only non-sensitive assertions to `phase-02-browser.json`. Stop
+the harness gracefully to remove credentials and its temporary database. If killed
+abruptly, remove only that known test directory after verifying the harness stopped.
+Do not publish raw browser traces, HARs or snapshots containing form values.
+
+API-only callers must supply Origin and the CSRF token as well as a session cookie.
+For a classroom demonstration, use the normal hidden-prompt bootstrap documented in
+the developer guide rather than the automated browser-test credential file.
 
 ## Required later security scenarios
 

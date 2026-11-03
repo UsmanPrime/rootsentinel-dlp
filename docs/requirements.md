@@ -67,3 +67,23 @@ before an allowed decision, not zero latency. REST is the baseline interpretatio
 of “REST/WebSocket endpoints”; any instructor demand for both must be confirmed.
 The local gateway is mandatory to deliver, though not required to run with the
 public server. Three days is the Codex resource window, not a university deadline.
+
+## Phase 02 traceability update
+
+Source requirements and paragraph references above are unchanged. Their original
+status descriptions are the Phase 01 snapshot. Phase 02 advances:
+
+- C03/C10/C12: indexed exact/block detection and separated deterministic policy,
+  bounded intake and failure tests; final enforcement remains Phase 03.
+- C08/C15: opaque sessions, password hashing, revocation, roles, persistence and
+  documented REST endpoints. Authenticated audit keys remain unimplemented.
+- C13/C14: minimal responsive real-backend local workbench; full onboarding and
+  public hosting remain later work.
+- C16: Phase 01 published; Phase 02 checkpoint/publication status is in its evidence.
+- C18/C20/C21: REST and reproducible detection/security/browser tests plus measured
+  local benchmarks. WebSockets remain P1; no enterprise or universal-DLP claim.
+- C09/C19: implemented threat model and remaining boundary assumptions documented.
+
+Three named contributors, topic-sheet confirmation, local staging delivery, public
+deployment, final report/PDF, presentation and submission remain overall-project
+deliverables. Phase 02 does not claim the entire course project is complete.

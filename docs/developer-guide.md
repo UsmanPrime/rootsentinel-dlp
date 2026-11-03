@@ -6,7 +6,8 @@ Use the existing `https://github.com/UsmanPrime/rootsentinel-dlp.git` repository
 The owner verified the remote was empty through normal Windows PowerShell
 (`git ls-remote`, exit 0), then initialized this local repository on `main` and
 configured origin. Source, tests and documentation were preserved. See the Phase 01
-report for local checkpoint evidence. No push has been authorized.
+report for historical checkpoint evidence. Phase 01 was subsequently published;
+Phase 02 has separate conditional publication authorization and evidence.
 
 Do not reinitialize or clone into this nonempty working directory. Preserve local
 history, inspect divergence before later synchronization, and stop on unexpected
@@ -17,8 +18,8 @@ Licensing remains a team decision.
 
 - Python 3.12 or 3.13; local validation used Python 3.12.12 (unittest) and 3.13.4 (pytest).
 - Node >=22.12 and <25; local validation used Node 24.11.0/npm 11.6.1.
-- Backend core: standard library only. Test dependencies: exact versions in
-  `backend/requirements-dev.lock`; no installed runtime dependency is required.
+- Cryptographic core: standard library only. Phase 02 runtime dependencies are
+  pinned in `backend/requirements.lock`, tests in `backend/requirements-dev.lock`.
 - Frontend: exact direct versions plus `package-lock.json`; install with `npm ci`.
 - Docker/WSL2 are required for later delivery, not to exercise the crypto library.
 
@@ -50,7 +51,7 @@ provided the exact pinned pytest toolchain. For the dependency-free option:
 
 ```powershell
 Push-Location backend
-python -B -m unittest discover -s tests -v
+python -B -m unittest tests.test_crypto tests.test_config -v
 Pop-Location
 python -B scripts/fixtures.py
 ```
@@ -124,3 +125,54 @@ tests, and GitHub connectivity remain separate checks. The existing pinned pytes
 environment passed with plugin autoload disabled to exclude unrelated installed
 plugins. Never include raw terminal profiles or private host paths in public
 evidence. Use sanitized commands and summarized results.
+
+## Phase 02 local backend
+
+The preceding environment-availability notes describe Phase 01. Phase 02 installed
+the locked backend into its own external virtual environment. Runtime storage is
+created only by explicit migration, CLI or application-factory calls.
+
+From the source root in PowerShell, using an existing supported CPython:
+
+```powershell
+$rsVenv = Join-Path $env:LOCALAPPDATA 'RootSentinel\venvs\backend'
+python -m venv $rsVenv
+$rsPython = Join-Path $rsVenv 'Scripts\python.exe'
+& $rsPython -m pip install -r backend/requirements-dev.lock
+$env:ROOTSENTINEL_MODE = 'local'
+$env:ROOTSENTINEL_ORIGIN = 'http://127.0.0.1:5173'
+$env:ROOTSENTINEL_SECURE_COOKIES = 'false'
+Push-Location backend
+& $rsPython -m alembic upgrade head
+& $rsPython -m app.cli create-user local-admin --role ADMIN
+& $rsPython -m uvicorn app.api:create_app --factory --host 127.0.0.1 --port 8000 --workers 1 --no-access-log --no-proxy-headers
+```
+
+Bootstrap prompts for a password privately; no password argument or default exists.
+In another terminal, start `npm run dev` from `frontend`. Vite proxies `/api` to
+loopback port 8000 without changing the browser Host. Sign in, register the synthetic
+fixture, run exact/partial/shifted scans, inspect evidence and sign out. Other roles
+can be created with the same CLI and their explicit role. Never reuse real passwords.
+
+`python -m app.cli reset-password local-admin` prompts privately and revokes sessions.
+`python -m app.cli revoke-sessions local-admin` revokes all sessions for that user.
+Existing users are not silently overwritten by bootstrap.
+
+If ports are occupied, preserve existing services. Choose another frontend port
+with `npm run dev -- --port 5189 --strictPort`, update `ROOTSENTINEL_ORIGIN` to match,
+and use `ROOTSENTINEL_API_PORT` for the Vite proxy if the backend uses a different
+port. The normal Uvicorn command takes its port via `--port`; that variable is not
+an automatic Uvicorn configuration. Set the variables in each relevant terminal.
+
+The process reads environment variables directly; `.env.example` is documentation,
+not an automatically loaded credential file. Unset DATABASE_URL selects external
+SQLite. Keep private PostgreSQL URLs in the process environment or an approved local
+secret store. Do not put them in shell history, screenshots, Git or evidence.
+
+Linux/WSL uses the same commands with `python3 -m venv` in native external storage
+and environment exports. Runtime directories must be 0700. This is the local API;
+the native-filesystem staging adapter remains a later implementation.
+
+Default mode is `public_demo` and refuses operational requests, so accidental startup
+does not expose arbitrary uploads. Do not deploy local mode publicly. Secure cookies
+are mandatory outside explicit loopback configuration. See [authentication](authentication.md).

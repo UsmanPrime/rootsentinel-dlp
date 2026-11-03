@@ -2,8 +2,12 @@
 
 ## Implementation status
 
-Phase 01 implements cryptographic primitives/composition and path configuration.
-All operational components below are planned, not working security controls yet.
+Phase 02 implements the registry, indexed detector, versioned policy evaluator,
+authentication, bounded local intake, migrations and persistent evidence. The local
+browser workbench calls these services. Release, staging, incidents, authenticated
+audit and public deployment in the product diagrams below remain planned.
+See [threat model](threat-model.md), [database](database.md), [detection](detection-spec.md),
+[policy](policy-spec.md), [authentication](authentication.md) and [API](api.md).
 
 ## Intended architecture
 
@@ -63,7 +67,7 @@ transport to the TLS terminator; the database connection also uses TLS. Digests
 are not encryption. Providers/host administrators can access server-side plaintext.
 No application encryption-at-rest or enterprise compliance claim is made.
 
-## Detection and policy contract for the next phases
+## Detection and policy contract
 
 Register immutable versions. Exact digest match always blocks. Otherwise default
 policy blocks at 1024 matched outbound bytes for any one protected asset. Count
@@ -95,12 +99,46 @@ tamper tests assume the attacker does not also possess audit integrity keys.
 | Audit edits | HMAC-SHA-256 chain and external checkpoints | Key compromise; uncheckpointed tail truncation |
 | Logs expose source/secrets | Allowlisted metadata and redaction tests | Infrastructure logs need separate review |
 
-## Secrets (planned)
+## Secrets lifecycle
 
 SHA-256 has no key. Session tokens are 32 random bytes from `secrets`; persist token
 digests, rotate on login/privilege changes, revoke on logout/reset/admin action.
-Cookies are HttpOnly/Secure in deployment, SameSite=Lax with CSRF/Origin validation.
+Cookies are HttpOnly/Secure in deployment, SameSite=Strict with CSRF/Origin validation.
 Use Argon2id for passwords. Audit keys are independent random 32-byte values stored
 outside Git and the database. Records carry key IDs; retain old keys for verification,
 rotate after disclosure, and mark compromised epochs untrusted. TLS lifecycle is
-delegated to the provider. No such secrets are generated in Phase 01.
+delegated to the provider. Phase 02 implements sessions, Argon2id, CSRF, password
+reset and session revocation. Audit keys and HMAC records are still Phase 03 work.
+
+## Phase 02 module boundaries
+
+`settings` validates configuration; `db` owns engines/units of work; `models` maps
+persistence; `schemas` allowlists input/output. `registry`, `detection`, `policy`
+and `scans` contain domain behavior. `auth` owns session checks; `intake` owns
+temporary copy/freeze/cleanup. `api` integrates them. Phase 01 `crypto` is unchanged.
+
+```mermaid
+sequenceDiagram
+  actor User
+  participant API
+  participant Intake
+  participant Scan
+  participant DB
+  User->>API: Authenticated raw synthetic bytes + CSRF
+  API->>API: Validate Origin, role, size/capacity
+  API->>Intake: Stream to private temporary handle
+  Intake-->>API: Frozen bytes + random ID; close temporary file
+  API->>Scan: Actor, display name, frozen input
+  Scan->>Scan: SHA-256, fixed chunks, Merkle commitment
+  Scan->>DB: Begin transaction and lock registry state
+  DB-->>Scan: Stable revision and policy version
+  Scan->>DB: Indexed exact and batched chunk queries
+  Scan->>Scan: Group evidence and evaluate policy
+  Scan->>DB: Persist evaluation, matches and decision; commit
+  Scan-->>API: Evidence and decision, release_authorized=false
+  API-->>User: Typed JSON
+```
+
+The [SQLAlchemy transaction model](https://docs.sqlalchemy.org/en/20/orm/session_transaction.html)
+and [Alembic migration workflow](https://alembic.sqlalchemy.org/en/latest/tutorial.html)
+were inspected during implementation. Sessions are not shared across requests.

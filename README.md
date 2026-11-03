@@ -6,13 +6,14 @@ CS-3002 Information Security · Existing repository: [UsmanPrime/rootsentinel-dl
 
 ## Current state
 
-Phase 01 foundation: a tested SHA-256/Merkle library, deterministic synthetic
-fixtures, external-runtime path validation, and a responsive React preview.
-**There is no operational DLP gateway or public deployment yet.** Registry,
-matching, policy, authentication, incidents and release enforcement are later phases.
+Phase 02: an authenticated local asset registry, indexed exact/block detector,
+versioned policy engine, persistent evidence and a React detection workbench.
+**There is no file-release gateway or public deployment yet.** Incidents, authenticated
+audit, controlled release and the Linux staging adapter belong to later phases.
 
-The Python core has no third-party runtime dependencies. It uses `hashlib`, not a
-custom hash primitive. The preview does not display fabricated scan results.
+The unchanged cryptographic core uses Python `hashlib`. The backend uses FastAPI,
+SQLAlchemy/Alembic and Argon2id. The workbench displays actual backend results.
+An ALLOW result does not authorize or deliver bytes in this phase.
 
 ## Intended product
 
@@ -30,14 +31,14 @@ Use Python 3.12 or 3.13. From the repository root:
 
 ```sh
 cd backend
-python -B -m unittest discover -s tests -v
+python -B -m unittest tests.test_crypto tests.test_config -v
 cd ..
 python -B scripts/fixtures.py
 ```
 
-For the pytest workflow, install `backend/requirements-dev.lock` into an
-isolated environment outside the source tree, then run `python -m pytest` from
-`backend`. See [installation](docs/developer-guide.md).
+For the complete backend suite, install `backend/requirements-dev.lock` into an
+isolated environment outside source, then run `python -m pytest` from `backend`.
+See [local setup and migration instructions](docs/developer-guide.md#phase-02-local-backend).
 
 With Node 22.12+ (below 25):
 
@@ -49,7 +50,7 @@ npm run build
 npm run dev
 ```
 
-The preview binds to loopback. It is not a production deployment. Dependencies and
+The workbench binds to loopback. It is not a production deployment. Dependencies and
 build output are ignored by Git; Git-ignore does not exclude OneDrive syncing.
 
 ## Documentation
@@ -62,14 +63,17 @@ build output are ignored by Git; Git-ignore does not exclude OneDrive syncing.
 - [Testing and evidence](docs/testing.md)
 - [Research references](docs/research.md)
 - [Phase 01 completion report](docs/evidence/phase-01.md)
+- [Phase 02 completion report](docs/evidence/phase-02.md)
+- [REST contract and OpenAPI](docs/api.md)
+- [Detection limitations](docs/detection-spec.md)
+- [Database and migrations](docs/database.md)
+- [Authentication and authorization](docs/authentication.md)
 
 ## Repository status and contributions
 
-The owner verified the existing remote was empty using a successful `git ls-remote`
-and initialized this local repository on `main` with the correct origin. Phase 01
-validation passes and the audited foundation is committed locally. See the completion
-report for the checkpoint SHA and verification evidence. Publishing remains a
-separate authorized action.
+Phase 01 was published at `5d6df58a6118a79e8c6b3928a4225c3aebef6b15`.
+Phase 02 preserves that history. Its completion evidence records validation and
+publication status; Git history identifies the exact implementation checkpoint.
 
 The course requires exactly three students. Named ownership and actual contribution
 history must be recorded by the team; neither is fabricated here. Licensing remains

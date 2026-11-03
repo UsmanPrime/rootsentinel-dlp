@@ -43,3 +43,23 @@ footer { padding: 22px 0 32px; border-top: 1px solid var(--border); display: fle
 @media (max-width: 800px) { .layout { padding: 0 24px; } .cards { grid-template-columns: 1fr; } .card h3 { margin-top: 18px; } .hero { padding-top: 48px; } }
 @media (max-width: 480px) { .layout { padding: 0 20px; } .topbar { flex-wrap: wrap; padding: 20px 0; gap: 10px; } .phase { width: 100%; } .section-heading { display: block; } .modes { grid-template-columns: 1fr; gap: 16px; } footer { flex-direction: column; } h1 { letter-spacing: -1px; } }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+.workbench { margin: 0 0 56px; padding: 24px 0; border-top: 1px solid var(--border); }
+.workbench > p { color: var(--muted); max-width: 850px; }
+.work-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 16px; }
+.work-form { display: grid; gap: 16px; max-width: 440px; }
+.workbench label { display: grid; gap: 6px; font-size: 14px; }
+.workbench input, .workbench select { width: 100%; padding: 11px; border: 1px solid #566a80; border-radius: 6px; color: var(--text); background: var(--background); font: inherit; }
+.workbench button { padding: 10px 16px; border: 1px solid #4f7892; border-radius: 6px; color: var(--text); background: #19374d; font: inherit; cursor: pointer; margin: 14px 0; }
+.workbench button:disabled { opacity: .55; cursor: wait; }
+.workbench :is(input, select, button, summary):focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.session-bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.notice { padding: 14px; background: #142e39; border: 1px solid #365f70; border-radius: 6px; overflow-wrap: anywhere; }
+.notice.error { border-color: #b8756a; background: #352223; }
+.scan-result { margin-top: 28px; border: 1px solid var(--border); padding: 24px; border-radius: 10px; }
+.verdict { border: 1px solid currentColor; border-radius: 5px; padding: 2px 8px; font-size: 14px; }
+.verdict.block { color: #ffb4a5; } .verdict.allow { color: #8de5be; }
+.digest, .scan-result dd { overflow-wrap: anywhere; font-family: ui-monospace, monospace; font-size: 12px; }
+.scan-result dd { margin-left: 0; color: var(--muted); margin-bottom: 12px; }
+.scan-result details { padding: 16px 0; border-top: 1px solid var(--border); }
+.scan-result summary { cursor: pointer; }
+.block-evidence { margin-top: 16px; padding-left: 12px; border-left: 2px solid var(--border); }

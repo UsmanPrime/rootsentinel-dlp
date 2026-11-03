@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import { Workbench } from './Workbench';
 
 const capabilities = [
   { number: '01', title: 'Identify exact bytes', label: 'SHA-256', text: 'A file fingerprint stays the same when a file is renamed. Changing its bytes changes the fingerprint.' },
@@ -17,7 +18,7 @@ function App() {
           <span className="brand-icon" aria-hidden="true">R<span>·</span></span>
           <span>RootSentinel <span className="brand-label">DLP</span></span>
         </a>
-        <span className="phase"><span aria-hidden="true" /> Phase 01 · Foundation</span>
+        <span className="phase"><span aria-hidden="true" /> Phase 02 · Detection</span>
       </header>
       <main id="content">
         <section className="hero" aria-labelledby="title">
@@ -25,8 +26,9 @@ function App() {
           <h1 id="title">Understand the evidence.<br /><span>Control the release.</span></h1>
           <p className="intro">A cryptographic foundation for protecting registered source code at a controlled outbound gateway.</p>
           <a className="text-link" href="#foundation">Explore the foundation <span aria-hidden="true">↘</span></a>
-          <div className="scope-note"><strong>Foundation preview</strong><p>Scanning, policy evaluation and transfer enforcement are not available in this interface yet. This page shows no simulated scan results.</p></div>
+          <div className="scope-note"><strong>Local detection and policy</strong><p>The authenticated workbench processes synthetic files through the backend. File release and public deployment are not available yet.</p></div>
         </section>
+        <Workbench />
         <section id="foundation" aria-labelledby="foundation-title">
           <div className="section-heading"><h2 id="foundation-title">Three distinct responsibilities</h2><span>Cryptographic profile v1</span></div>
           <div className="cards">{capabilities.map(item => (

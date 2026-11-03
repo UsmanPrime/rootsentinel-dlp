@@ -1,0 +1,58 @@
+# Authentication and authorization
+
+Local Phase 02 uses one workspace and three server-enforced roles.
+
+| Operation | ADMIN | ANALYST | EMPLOYEE |
+|---|---|---|---|
+| Register/version/retire assets | Yes | No | No |
+| Registry manifests, versions and proofs | Yes | Yes | No |
+| Configure policy | Yes | No | No |
+| Read active policy | Yes | Yes | Yes |
+| Policy history | Yes | Yes | No |
+| Submit scan | Yes | Yes | Yes |
+| Inspect scan | All | All | Own only |
+
+Employees may see digest-based evidence for their own scans, including opaque asset
+and version IDs and matching indices, but cannot enumerate protected registry
+metadata. No endpoint returns registered source bytes. UUID unpredictability does
+not replace object authorization; unauthorized scan IDs return the same 404 as
+missing IDs.
+
+Passwords use argon2-cffi's Argon2id with 64 MiB memory, three iterations and four
+lanes. Operator bootstrap accepts 12–128 characters through a hidden prompt, never
+argv or committed defaults. Login accepts at most 128 characters and rejects invalid
+usernames. Unknown/disabled users and wrong passwords receive the same generic
+authentication error; a dummy Argon2 hash avoids skipping verification for unknown
+users. This is not a claim of perfect timing indistinguishability.
+
+Login creates 32 random bytes encoded as a URL-safe opaque token. Only its SHA-256
+digest is stored. The cookie is HttpOnly, SameSite=Strict, scoped to `/api/v1`, and
+Secure by default. Turning off Secure is allowed only in explicit local mode with a
+loopback origin. Tokens expire after one hour by default. Logging in rotates the
+browser's previous session; logout, password reset and operator revocation invalidate
+sessions in the database. Disabling a user invalidates access immediately at the next
+authorization check. There are no bearer JWTs or shared signing/session secrets.
+
+The CSRF token is SHA-256 over a fixed domain prefix plus the high-entropy session
+token. The database stores only its digest. Authenticated clients receive the CSRF
+value at login or `/auth/me` and hold it in memory. Mutations require its exact value
+in `X-CSRF-Token`, plus an exact configured Origin. Login requires Origin even before
+a session exists. There is no cross-origin credential CORS policy. Host allowlisting
+reduces DNS-rebinding exposure for loopback development.
+
+Bounded login attempts: five per username, fifteen per peer and thirty globally in
+each 60-second fixed window. All attempts count. Keys are hashed in a bounded 2,048-entry
+in-memory map. A global bucket prevents evasion by cycling usernames/IPs. Two concurrent
+Argon2 operations limit memory use. **Run one application worker**; limits reset at
+restart and are not a distributed abuse-prevention service. Do not trust unvalidated
+proxy headers. Public-demo mode currently denies all operational API routes, even
+with an existing local session; public identities and fixture-only isolation are later.
+
+No application handler logs request bodies, SQL parameters, credentials or source
+content. Structured errors exclude validation input and exception text. Unexpected
+request failures are caught before server traceback logging. Use Uvicorn's
+`--no-access-log --no-proxy-headers` locally; reverse-proxy and host logs require
+separate configuration before deployment. There is no authenticated audit chain yet.
+
+References inspected for this implementation: [argon2-cffi password hashing](https://argon2-cffi.readthedocs.io/en/stable/howto.html)
+and [OWASP Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).

@@ -1,4 +1,4 @@
-name: Phase 01 foundation
+name: Backend and frontend verification
 
 on:
   push:
@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  crypto:
+  backend:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -19,11 +19,37 @@ jobs:
         with:
           python-version: '${{ matrix.python-version }}'
           cache: pip
-          cache-dependency-path: backend/requirements-dev.lock
+          cache-dependency-path: |
+            backend/requirements.lock
+            backend/requirements-dev.lock
       - run: python -m pip install -r backend/requirements-dev.lock
       - run: python -m pytest
         working-directory: backend
       - run: python -B scripts/fixtures.py
+      - run: git diff --exit-code
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: rootsentinel_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # Disposable CI service only, no password and no production data.
+      ROOTSENTINEL_TEST_POSTGRES_URL: postgresql+psycopg://postgres@localhost:5432/rootsentinel_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -r backend/requirements-dev.lock
+      - run: python -m pytest -q
+        working-directory: backend
       - run: git diff --exit-code
   frontend:
     runs-on: ubuntu-latest

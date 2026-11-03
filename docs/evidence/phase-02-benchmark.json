@@ -1,0 +1,71 @@
+{
+  "environment": {
+    "python": "3.13.4",
+    "os": "Windows",
+    "architecture": "AMD64",
+    "sqlite": "3.49.1"
+  },
+  "method": "Growing registry, unique deterministic blocks, 3 detector runs with tracemalloc; 100 exact/policy runs. Warm local SQLite; not a capacity or production claim.",
+  "measurements": [
+    {
+      "bytes": 1024,
+      "registration_ms": 19.617,
+      "fingerprinting_ms": 0.074,
+      "detection_median_ms_with_tracemalloc": 4.047,
+      "detection_queries": [
+        2,
+        2,
+        2
+      ],
+      "python_traced_peak_bytes": 125194,
+      "policy_mean_ms": 0.00229,
+      "exact_lookup_mean_ms": 0.35489,
+      "sqlite_file_bytes": 184320
+    },
+    {
+      "bytes": 65536,
+      "registration_ms": 11.94,
+      "fingerprinting_ms": 0.555,
+      "detection_median_ms_with_tracemalloc": 10.124,
+      "detection_queries": [
+        2,
+        2,
+        2
+      ],
+      "python_traced_peak_bytes": 189774,
+      "policy_mean_ms": 0.00203,
+      "exact_lookup_mean_ms": 0.31935,
+      "sqlite_file_bytes": 200704
+    },
+    {
+      "bytes": 1048576,
+      "registration_ms": 54.586,
+      "fingerprinting_ms": 8.423,
+      "detection_median_ms_with_tracemalloc": 113.946,
+      "detection_queries": [
+        7,
+        7,
+        7
+      ],
+      "python_traced_peak_bytes": 1544414,
+      "policy_mean_ms": 0.00217,
+      "exact_lookup_mean_ms": 0.32221,
+      "sqlite_file_bytes": 462848
+    },
+    {
+      "bytes": 10485760,
+      "registration_ms": 603.798,
+      "fingerprinting_ms": 79.342,
+      "detection_median_ms_with_tracemalloc": 4884.648,
+      "detection_queries": [
+        53,
+        53,
+        53
+      ],
+      "python_traced_peak_bytes": 15591830,
+      "policy_mean_ms": 0.0088,
+      "exact_lookup_mean_ms": 1.05581,
+      "sqlite_file_bytes": 3121152
+    }
+  ]
+}
