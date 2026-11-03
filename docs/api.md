@@ -1,4 +1,4 @@
-# REST API — Phase 02
+# REST API — Phases 02 and 03
 
 Version prefix `/api/v1`; local same-origin cookie authentication. The application
 generates OpenAPI at `/openapi.json` and interactive documentation at `/docs`.
@@ -78,3 +78,37 @@ is local-only and never fabricates verdicts.
 References inspected: [FastAPI direct Request support](https://fastapi.tiangolo.com/advanced/using-request-directly/)
 and [Starlette streaming requests](https://starlette.dev/requests/). Direct Request
 use requires the explicit validation, byte accounting and OpenAPI declarations here.
+
+## Phase 03 additions
+
+All routes retain `/api/v1`, existing cookie/Origin/CSRF checks and public-mode denial.
+Mutation requests require `X-CSRF-Token`; raw uploads use `application/octet-stream`.
+Transfer creation requires a UUID `Idempotency-Key`. Query pagination: limit 1?100,
+offset 0?100000. Errors retain the existing safe INDETERMINATE/release_authorized=false envelope.
+
+| Method and route | Permission and behavior |
+|---|---|
+| POST /transfers?filename=candidate.bin | Authenticated local input; bounded intake, persisted evaluation; 201 |
+| POST /transfers/fixtures | Authenticated local `{fixture: benign or protected}`; same real gateway; 201 |
+| GET /transfers | Own transfers for EMPLOYEE, metadata across users for ADMIN/ANALYST |
+| GET /transfers/{id} | Same ownership rules; actual evidence/state and release eligibility |
+| POST /transfers/{id}/release | Owner only; single-use verified bytes; no administrator BLOCK bypass |
+| POST /transfers-maintenance/expire | ADMIN bounded expiry/cleanup |
+| GET /incidents | ADMIN/ANALYST; optional OPEN/INVESTIGATING/RESOLVED status filter |
+| GET /incidents/{id} | ADMIN/ANALYST real scan and bounded investigation history |
+| PATCH /incidents/{id} | ADMIN/ANALYST; expected_revision, status, note, resolution |
+| GET /exports/incidents/{id} | ADMIN/ANALYST sanitized JSON; audited export |
+| GET /audit/events | ADMIN/ANALYST; after sequence 0?20000 and limit 1?100 |
+| POST /audit/verify | ADMIN/ANALYST; first-invalid-event result and checked head/checkpoint |
+| POST /audit/checkpoint | ADMIN; verify and retain independent signed head metadata |
+
+The fixture endpoint's `protected` marker is synthetic; it only BLOCKs if its bytes are
+registered. The browser's established eight-block fixtures are a separate deterministic
+fixture family and use the raw local upload route. No name creates an automatic verdict.
+
+Release response is octet-stream with generated attachment name, no-store and nosniff.
+Denials contain JSON, never file bytes: 401 authentication, 403 role/CSRF/origin, 404 unknown
+or unowned object, 409 blocked/stale/consumed/conflict, 410 newly detected expiry, 413 size,
+422 invalid schemas/UUIDs, 429 rate/pending cap, 503 infrastructure/audit/integrity/capacity.
+A prior terminal EXPIRED record returns 409 on subsequent release attempts. See generated
+[OpenAPI](openapi.json) for precise schemas and [transfer contract](transfer-spec.md).

@@ -105,3 +105,13 @@ the single-leaf root is
 For `A` repeated 1024 bytes, then `B` repeated 1024 bytes, then one `C`, root is
 `b77f5d4eb26d8387914ce5dd21753f67c1594343db08d9ffab1ace114aae98de`.
 Its shape is `node(node(leaf0, leaf1), leaf2)`.
+
+## Phase 03 keyed audit extension
+
+The file fingerprint/Merkle specification above is unchanged. SHA-256 file hashes are
+unkeyed; the audit protocol separately uses HMAC-SHA-256 with 32-byte random secret keys.
+Canonical serialization, length/domain prefixes, sequence linkage, rotation and checkpoint
+verification are fully specified in [audit-spec.md](audit-spec.md). Independent reference
+HMAC tests do not reuse the production MAC helper. Download preflight independently hashes
+the actual immutable delivery bytes and compares both digest and byte length with the
+approved scan manifest; the same buffer is sent.

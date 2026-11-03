@@ -63,3 +63,9 @@ footer { padding: 22px 0 32px; border-top: 1px solid var(--border); display: fle
 .scan-result details { padding: 16px 0; border-top: 1px solid var(--border); }
 .scan-result summary { cursor: pointer; }
 .block-evidence { margin-top: 16px; padding-left: 12px; border-left: 2px solid var(--border); }
+
+/* Evidence identifiers must wrap on narrow investigation layouts. */
+.workbench .card, .workbench label, .workbench article { min-width: 0; }
+.workbench dd { margin-left: 0; overflow-wrap: anywhere; font-family: ui-monospace, monospace; font-size: 12px; }
+.workbench li, .workbench details, .workbench button { overflow-wrap: anywhere; }
+.workbench input, .workbench select { min-width: 0; max-width: 100%; }

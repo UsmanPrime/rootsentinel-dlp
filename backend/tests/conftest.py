@@ -1,6 +1,8 @@
 from pathlib import Path
 import os
 import secrets
+import base64
+import json
 from uuid import uuid4
 
 from alembic import command
@@ -37,7 +39,10 @@ def system(tmp_path, credentials, request):
         with admin_engine.begin() as connection:
             connection.execute(text(f'CREATE SCHEMA "{schema}"'))
         url = base.update_query_dict({"options": f"-csearch_path={schema}"}).render_as_string(hide_password=False)
-    settings = Settings(paths, url, "local", secure_cookies=False)
+    key_file = tmp_path / "audit-keys.json"
+    key_file.write_text(json.dumps({"version": 1, "active_id": "test", "keys": {"test": base64.b64encode(secrets.token_bytes(32)).decode()}}))
+    key_file.chmod(0o600)
+    settings = Settings(paths, url, "local", secure_cookies=False, audit_key_file=key_file, checkpoint_root=tmp_path / "checkpoints")
     cfg = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     cfg.attributes["settings"] = settings
     command.upgrade(cfg, "head")

@@ -56,3 +56,12 @@ separate configuration before deployment. There is no authenticated audit chain 
 
 References inspected for this implementation: [argon2-cffi password hashing](https://argon2-cffi.readthedocs.io/en/stable/howto.html)
 and [OWASP Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
+
+## Phase 03 permissions
+
+All authenticated roles can create local transfers and download only their own eligible
+transfer. ADMIN/ANALYST may inspect cross-user metadata, investigate incidents, export
+sanitized evidence and verify audit records. Only ADMIN can retain explicit checkpoints
+and invoke bounded cleanup. No role can override BLOCK or download another actor's bytes.
+Release rechecks session revocation/expiry and enabled account inside its acquisition
+transaction. Existing CSRF, Origin, HttpOnly/secure-cookie and login throttling remain.

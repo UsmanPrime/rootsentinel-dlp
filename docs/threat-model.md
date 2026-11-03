@@ -1,13 +1,14 @@
-# Implemented threat model — Phase 02
+# Implemented threat model — Phase 03
 
-The system evaluates local synthetic uploads. No file transfer enforcement is
-implemented. The original product context and future trust-boundary diagram remain
+The system evaluates local synthetic uploads and enforces bounded single-use
+downloads through its controlled gateway. The original product context and future trust-boundary diagram remain
 in [architecture](architecture.md); this document specifies today's controls.
 
 Trusted: backend process, OS, private runtime-directory owner, database operator,
 authorized asset baseline and administrator. Untrusted: browser parameters, filenames,
 payload bytes, cookie/proof submissions and other authenticated users. A compromised
-host/database administrator is outside the protection boundary. No cross-tenant
+host/key holder is outside the protection boundary. Database-only event modification
+is checked by the Phase 03 HMAC chain and independent checkpoint. No cross-tenant
 isolation claim is made; the deployment is a single workspace.
 
 ```mermaid
@@ -35,7 +36,7 @@ flowchart LR
 | Mutable upload source | One streamed temporary copy becomes immutable bytes; original never reread | Client can upload arbitrary bytes; no producer authenticity |
 | Partial/oversized upload | Count actual bytes, 60-second intake timeout, declared-length consistency, cleanup | Process crash may leave platform-dependent temporary files; no secure erasure claim |
 | Memory/query amplification | 10 MiB, two intake slots, batched indexed lookup, evidence caps, bounded pages | Sustained authenticated traffic can exhaust disk metadata; operator quotas/retention later |
-| Historical changes | Immutable-version DB triggers and immutable persisted evaluations | DBA can disable triggers; cryptographic audit chain is Phase 03 |
+| Historical changes | Immutable-version DB triggers and immutable persisted evaluations | DBA can disable triggers; HMAC verification detects covered event tampering without keys |
 | Concurrent policy/registry edit | Shared state transaction lock and optimistic version preconditions | Serialized writes limit throughput |
 | Infrastructure failure | Rollback and INDETERMINATE response, never authorized release | Unavailable DB cannot persist its own failure |
 | Logs disclose input | Allowlisted errors, hidden SQL parameters, no body logging; sentinel tests | Operator/infrastructure logs still need review |
@@ -55,3 +56,25 @@ SHA-256 is unkeyed. Session tokens rotate at login and can be revoked; password 
 revokes existing sessions. Future audit integrity keys must be independently generated,
 stored outside the database/source, rotated with key IDs and externally checkpointed.
 No audit-key functionality is falsely represented as working in this phase.
+
+## Phase 03 implemented boundary
+
+See [transfer invariant](transfer-spec.md) and [audit trust assumptions](audit-spec.md).
+The only payload route is an authenticated owner-only POST release. BLOCK, stale/expired
+revisions, missing/altered snapshots, missing keys, failed mandatory audit or checkpoint
+operations cannot construct a payload response. Current policy/registry locking is checked
+at acquisition, not continuously during network delivery. The immutable buffer defeats
+path mutation after capture. No recipient-storage/exactly-once guarantee is claimed.
+
+Windows DACL and POSIX mode checks reject broad storage permissions. The host, application
+identity and operator-owned parents remain trusted. HMAC protects canonical event fields
+against database-only modification without keys; it does not authenticate every mutable
+application table or defeat a compromised key/host. Tail truncation needs an independent
+trusted checkpoint. Pre-Phase-03 records have no retroactive HMAC guarantee. Runtime and
+checkpoint failures may deny service; safety is prioritized over automatic retries.
+
+Resource limits: 10 MiB inputs, two processing slots, 20 pending snapshots globally, ten
+per account, 30/account and 120/global transfer attempts/minute, 20,000 audit events.
+Deployment is one worker; restart clears in-memory rate buckets. Analysis notes are
+user-entered text: do not paste sensitive source or secrets into them. Export is unsigned
+metadata, not independently certified forensic evidence.

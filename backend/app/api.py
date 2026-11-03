@@ -1,6 +1,6 @@
-"""Phase 02 local REST application. No file release endpoints exist."""
+"""Local authenticated registry, detection and controlled transfer API."""
 import asyncio
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Annotated
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -31,6 +31,8 @@ from .schemas import (
     ScanView, UserView, VersionView, VersionSummary,
 )
 from .settings import Settings
+from .transfers import Gateway
+from .gateway_api import install_routes
 
 COOKIE = "rs_session"
 RAW_BODY = {"requestBody": {"required": True, "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}}
@@ -77,7 +79,7 @@ class RequestGuard:
             nonlocal started
             if message["type"] == "http.response.start":
                 started = True
-                message["headers"] = list(message.get("headers", [])) + [
+                message["headers"] = [(k, v) for k, v in message.get("headers", []) if k.lower() not in {b"cache-control", b"x-content-type-options", b"referrer-policy", b"x-frame-options"}] + [
                     (b"cache-control", b"no-store"), (b"x-content-type-options", b"nosniff"),
                     (b"referrer-policy", b"no-referrer"), (b"x-frame-options", b"DENY")]
             await send(message)
@@ -97,6 +99,7 @@ def create_app(settings: Settings | None = None):
     settings.prepare_storage()
     db = Database(settings.database_url)
     auth = AuthService(db, settings)
+    gateway = Gateway(db, settings)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -106,13 +109,30 @@ def create_app(settings: Settings | None = None):
             if state is None:
                 raise RuntimeError("Run migrations before starting the API")
             active_policy(s, state)
-        yield
-        db.engine.dispose()
+        if settings.audit_key_file is not None and settings.checkpoint_root is not None:
+            gateway.recover(restart=True)
+        async def maintenance():
+            while True:
+                await asyncio.sleep(60)
+                try:
+                    await run_in_threadpool(gateway.recover)
+                except Exception:
+                    # Release still fails closed; retry bounded maintenance next minute.
+                    pass
+        worker = asyncio.create_task(maintenance())
+        try:
+            yield
+        finally:
+            worker.cancel()
+            with suppress(asyncio.CancelledError):
+                await worker
+            db.engine.dispose()
 
-    app = FastAPI(title="RootSentinel DLP", version="0.2.0", lifespan=lifespan,
-        description="Local authenticated detection and policy evaluation. No release capability.",
+    app = FastAPI(title="RootSentinel DLP", version="0.3.0", lifespan=lifespan,
+        description="Local authenticated detection and single-use verified transfer gateway.",
         responses={code: {"model": ErrorView} for code in (400, 401, 403, 404, 409, 413, 415, 422, 429, 503)})
     app.state.db, app.state.auth, app.state.settings = db, auth, settings
+    app.state.gateway = gateway
     app.state.intake_slots = anyio.CapacityLimiter(2)
     app.add_middleware(RequestGuard, settings=settings)
 
@@ -153,7 +173,7 @@ def create_app(settings: Settings | None = None):
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "mode": settings.mode, "release_available": False}
+        return {"status": "ok", "mode": settings.mode, "release_configured": settings.mode == "local" and bool(settings.audit_key_file and settings.checkpoint_root)}
 
     @app.post("/api/v1/auth/login", response_model=AuthView)
     def login(body: LoginInput, request: Request, response: Response):
@@ -208,7 +228,9 @@ def create_app(settings: Settings | None = None):
         actor.require("ADMIN")
         def action(snapshot):
             with db.transaction() as s:
-                return register(s, actor, label, snapshot.data)
+                result = register(s, actor, label, snapshot.data)
+                gateway.audit.append(s, "ASSET_REGISTERED", actor.id, result.asset_id, registry_revision=result.registry_revision)
+                return result
         return await intake(request, action)
 
     @app.post("/api/v1/assets/{asset_id}/versions", response_model=VersionView, status_code=201, openapi_extra=RAW_BODY)
@@ -216,7 +238,9 @@ def create_app(settings: Settings | None = None):
         actor.require("ADMIN")
         def action(snapshot):
             with db.transaction() as s:
-                return register(s, actor, "unused", snapshot.data, str(asset_id), expected_version)
+                result = register(s, actor, "unused", snapshot.data, str(asset_id), expected_version)
+                gateway.audit.append(s, "ASSET_REGISTERED", actor.id, result.asset_id, registry_revision=result.registry_revision)
+                return result
         return await intake(request, action)
 
     @app.get("/api/v1/assets/{asset_id}", response_model=AssetView)
@@ -245,7 +269,9 @@ def create_app(settings: Settings | None = None):
     @app.post("/api/v1/assets/{asset_id}/retire", response_model=AssetView)
     def retire_asset(asset_id: UUID, actor: Actor):
         with db.transaction() as s:
-            return retire(s, actor, str(asset_id))
+            result = retire(s, actor, str(asset_id))
+            gateway.audit.append(s, "ASSET_RETIRED", actor.id, str(asset_id))
+            return result
 
     @app.get("/api/v1/assets/{asset_id}/versions/{version_id}/proofs/{index}", response_model=ProofView)
     def proof(asset_id: UUID, version_id: UUID, index: Annotated[int, Path(ge=0, le=10239)], actor: Actor):
@@ -280,7 +306,9 @@ def create_app(settings: Settings | None = None):
     @app.post("/api/v1/policies", response_model=PolicyView, status_code=201)
     def update_policy(body: PolicyInput, actor: Actor):
         with db.transaction() as s:
-            return change_policy(s, actor, body)
+            result = change_policy(s, actor, body)
+            gateway.audit.append(s, "POLICY_CHANGED", actor.id, result.id, policy_id=result.id)
+            return result
 
     @app.post("/api/v1/scans", response_model=ScanView, status_code=201, openapi_extra=RAW_BODY)
     async def scan(request: Request, actor: Actor, filename: Label = "candidate.bin"):
@@ -304,4 +332,5 @@ def create_app(settings: Settings | None = None):
         with db.transaction() as s:
             return get_scan(s, actor, str(scan_id))
 
+    install_routes(app, principal, intake)
     return app

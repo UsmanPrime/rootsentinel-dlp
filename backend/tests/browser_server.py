@@ -14,6 +14,7 @@ from alembic.config import Config
 import uvicorn
 
 from app.api import create_app
+from app.audit_keys import provision
 from app.auth import HASHER
 from app.config import StoragePaths, validate_external_path
 from app.db import Database
@@ -26,8 +27,10 @@ def main():
     state.mkdir(mode=0o700, parents=True, exist_ok=False)
     with tempfile.TemporaryDirectory(dir=state, prefix="session-") as external:
         paths = StoragePaths(Path(external) / "runtime", Path(external) / "artifacts")
+        key_file = Path(external) / "secrets" / "audit-keys.json"
+        provision(key_file)
         settings = Settings(paths, f"sqlite:///{paths.database.as_posix()}", "local",
-                            origin=os.environ.get("ROOTSENTINEL_ORIGIN", "http://127.0.0.1:5173"), secure_cookies=False)
+                            origin=os.environ.get("ROOTSENTINEL_ORIGIN", "http://127.0.0.1:5173"), secure_cookies=False, audit_key_file=key_file, checkpoint_root=Path(external) / "checkpoints")
         cfg = Config(str(SOURCE_ROOT / "backend/alembic.ini"))
         cfg.attributes["settings"] = settings
         command.upgrade(cfg, "head")

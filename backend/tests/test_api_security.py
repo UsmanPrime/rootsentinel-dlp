@@ -186,8 +186,8 @@ def test_public_demo_denies_even_authenticated_uploads(system, credentials):
             assert r.json()["error"]["code"] == "PUBLIC_DEMO_NOT_READY"
 
 
-def test_openapi_contract_no_release(client):
+def test_openapi_contract_controlled_release(client):
     schema = client.get("/openapi.json").json()
-    assert not any("release" in p or "download" in p for p in schema["paths"])
+    assert [p for p in schema["paths"] if "release" in p or "download" in p] == ["/api/v1/transfers/{identifier}/release"]
     assert "application/octet-stream" in schema["paths"]["/api/v1/scans"]["post"]["requestBody"]["content"]
     assert "ScanView" in schema["components"]["schemas"]

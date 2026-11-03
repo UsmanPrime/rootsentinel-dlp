@@ -68,3 +68,21 @@ random `rs_test_...` schema per test and drops only that schema afterward. Use a
 dedicated test database and role with schema-creation permissions. The same tests
 run on SQLite and PostgreSQL; without that variable only SQLite executes. See the
 Phase 02 evidence for what was actually run. SQL compilation alone is not parity.
+
+## Migration 0002 ? controlled transfer evidence
+
+Adds `transfers`, `release_attempts`, `incidents`, `incident_history`, `audit_heads`,
+`audit_events`. Snapshot identity/digest/length/expiry live on transfers; payload bytes live
+only in private temporary storage. No redundant snapshot table is needed. Unique actor +
+idempotency key, snapshot ID, transfer scan ID, single release attempt per transfer,
+incident per transfer, history revision and audit sequence constrain contradictory records.
+Foreign keys bind actors/scans/transfers and stream heads. Indexed actor/state/expiry and
+incident status support bounded queries. UTC conversion is shared with Phase 02.
+
+An initial random stream UUID is seeded once. Immutable triggers cover audit_events and
+incident_history in both SQLite and PostgreSQL. Existing Phase 02 immutability triggers
+remain. State transitions are enforced by the orchestration service; DB administrators
+are not assumed constrained by application triggers. Independent HMAC verification catches
+covered evidence modification. Checkpoints are retained independently, not merely copied
+into the same database. Migration tests include clean schema, downgrade/re-upgrade on
+isolated data and preservation of Phase 02 asset fingerprints during upgrade.

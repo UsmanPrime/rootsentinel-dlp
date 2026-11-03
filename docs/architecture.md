@@ -2,10 +2,11 @@
 
 ## Implementation status
 
-Phase 02 implements the registry, indexed detector, versioned policy evaluator,
-authentication, bounded local intake, migrations and persistent evidence. The local
-browser workbench calls these services. Release, staging, incidents, authenticated
-audit and public deployment in the product diagrams below remain planned.
+Phase 03 adds retained private snapshots, single-use verified downloads, incident
+investigation, HMAC audit events and external checkpoints to the existing Phase 02
+registry/detection/policy/authentication services. Staging and public deployment in
+the intended product diagram remain planned. Implemented contracts: [transfers](transfer-spec.md),
+[audit protocol](audit-spec.md), [local operation](deployment.md).
 See [threat model](threat-model.md), [database](database.md), [detection](detection-spec.md),
 [policy](policy-spec.md), [authentication](authentication.md) and [API](api.md).
 
@@ -78,7 +79,7 @@ blocking threshold. Empty protected-asset registration is rejected.
 Authentication, invalid input, stale state and infrastructure errors prevent release.
 No administrator override exists in P0. Policy changes create new versions; changed
 policy or registry revisions require rescan before release. Incident closure does
-not grant permission. Public visitors can select only server-owned synthetic files.
+not grant permission. Public visitors are currently denied API access. Synthetic-only public isolation is a later release gate.
 
 ## Trust and residual risks
 
@@ -108,7 +109,7 @@ Use Argon2id for passwords. Audit keys are independent random 32-byte values sto
 outside Git and the database. Records carry key IDs; retain old keys for verification,
 rotate after disclosure, and mark compromised epochs untrusted. TLS lifecycle is
 delegated to the provider. Phase 02 implements sessions, Argon2id, CSRF, password
-reset and session revocation. Audit keys and HMAC records are still Phase 03 work.
+reset and session revocation. Phase 03 implements audit key provisioning, HMAC records and independent checkpoints.
 
 ## Phase 02 module boundaries
 
@@ -142,3 +143,34 @@ sequenceDiagram
 The [SQLAlchemy transaction model](https://docs.sqlalchemy.org/en/20/orm/session_transaction.html)
 and [Alembic migration workflow](https://alembic.sqlalchemy.org/en/latest/tutorial.html)
 were inspected during implementation. Sessions are not shared across requests.
+
+## Implemented Phase 03 orchestration
+
+`api.py` installs `gateway_api.py` with the existing principal and bounded intake dependencies.
+`transfers.Gateway` consumes `scans.run_scan`, whose detector/policy implementations are unchanged.
+`snapshots` and `private_files` own retained payloads; `windows_acl` performs read-only DACL checks.
+`incidents` owns investigation and export; `audit` owns canonical HMAC verification and checkpoints.
+`gateway_models` supplies six new relational tables; migration 0002 preserves migration 0001.
+
+```mermaid
+sequenceDiagram
+  participant Browser
+  participant Gateway
+  participant RegistryLock as Registry/Policy lock
+  participant Snapshot as Private snapshot
+  participant Audit as HMAC stream
+  participant Checkpoint as Independent checkpoint
+  Browser->>Gateway: POST transfer + session/CSRF/idempotency UUID
+  Gateway->>Snapshot: Freeze bounded bytes under generated ID
+  Gateway->>RegistryLock: Lock; run existing scan/policy
+  Gateway->>Audit: Commit decision and incident if BLOCK
+  Gateway-->>Browser: Evidence and state
+  Browser->>Gateway: POST release
+  Gateway->>RegistryLock: Lock; current revisions and ownership
+  Gateway->>Audit: Verify chain, head and checkpoint
+  Gateway->>Snapshot: Capture immutable bytes, verify digest/length
+  Gateway->>Audit: Commit single-use RELEASE_STARTED
+  Gateway->>Checkpoint: Persist committed audit head
+  Gateway-->>Browser: Same verified buffer only
+  Gateway->>Audit: STREAM_FINISHED or DELIVERY_UNKNOWN
+```

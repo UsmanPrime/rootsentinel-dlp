@@ -6,14 +6,15 @@ CS-3002 Information Security · Existing repository: [UsmanPrime/rootsentinel-dl
 
 ## Current state
 
-Phase 02: an authenticated local asset registry, indexed exact/block detector,
-versioned policy engine, persistent evidence and a React detection workbench.
-**There is no file-release gateway or public deployment yet.** Incidents, authenticated
-audit, controlled release and the Linux staging adapter belong to later phases.
+Phase 03: authenticated registry and detection, versioned policies, a controlled
+single-use transfer gateway, incident investigation and HMAC audit integrity.
+**Local browser workflow is implemented. Public deployment and the Linux staging
+adapter remain future work.**
 
 The unchanged cryptographic core uses Python `hashlib`. The backend uses FastAPI,
 SQLAlchemy/Alembic and Argon2id. The workbench displays actual backend results.
-An ALLOW result does not authorize or deliver bytes in this phase.
+A scan ALLOW alone never authorizes delivery; the gateway verifies bytes and current
+state again before a single-use download.
 
 ## Intended product
 
@@ -81,3 +82,14 @@ unselected pending the team's choice; no open-source license is implied.
 
 Never commit original instructor DOCX files, real protected payloads, secrets,
 runtime databases, or screenshots containing sensitive machine paths.
+
+## Phase 03 ? controlled transfer and evidence
+
+Local authenticated transfers now retain bounded private snapshots, evaluate the existing
+fingerprint/policy engine and release only single-use verified bytes. Protected-content
+blocks create investigable incidents. HMAC event chains and independent checkpoints support
+explicitly bounded tamper detection. The browser calls real APIs for download, investigation,
+export and verification. No operating-system-wide interception or public deployment is claimed.
+
+Start with [local setup](docs/deployment.md), [transfer protocol](docs/transfer-spec.md),
+[audit protocol and keys](docs/audit-spec.md), and [Phase 03 verification](docs/evidence/phase-03.md).

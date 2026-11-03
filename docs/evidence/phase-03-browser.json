@@ -1,0 +1,30 @@
+{
+  "browser": "156.0.8078.80",
+  "transport": "real loopback HTTP through Vite to Uvicorn",
+  "cases": [
+    {
+      "fixture": "protected",
+      "state": "BLOCKED",
+      "forged_release_status": 409,
+      "incident_resolution_and_export": "PASS"
+    },
+    {
+      "fixture": "partial",
+      "state": "BLOCKED",
+      "forged_release_status": 409,
+      "incident_resolution_and_export": "PASS"
+    },
+    {
+      "fixture": "benign",
+      "state": "ALLOWED",
+      "download_bytes": 2720,
+      "independent_sha256": "efecb5a34398f8906907275a3f4f8dc49da495c05281008fc0447bab0d95881d",
+      "byte_equality": "PASS"
+    }
+  ],
+  "audit_verification": "PASS",
+  "desktop_no_overflow": true,
+  "mobile_no_overflow": true,
+  "page_errors": 0,
+  "login_logout": "PASS"
+}

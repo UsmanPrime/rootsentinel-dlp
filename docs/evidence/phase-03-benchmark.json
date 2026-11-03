@@ -1,0 +1,174 @@
+{
+  "observed_at_utc": "2026-11-03T16:57:24.146653+00:00",
+  "python": "3.13.4",
+  "os": "Windows",
+  "architecture": "AMD64",
+  "database": "SQLite external temporary database",
+  "measurements": {
+    "snapshot_capture_1024": {
+      "samples": 3,
+      "median_ms": 3.798,
+      "min_ms": 3.022,
+      "max_ms": 4.452,
+      "query_counts": [
+        0,
+        0,
+        0
+      ]
+    },
+    "scan_to_decision_1024": {
+      "samples": 3,
+      "median_ms": 93.176,
+      "min_ms": 90.69,
+      "max_ms": 296.073,
+      "query_counts": [
+        35,
+        36,
+        36
+      ]
+    },
+    "release_preflight_1024": {
+      "samples": 3,
+      "median_ms": 74.512,
+      "min_ms": 50.086,
+      "max_ms": 142.109,
+      "query_counts": [
+        26,
+        26,
+        26
+      ]
+    },
+    "python_peak_bytes_1024": {
+      "samples": 3,
+      "maximum": 11384874
+    },
+    "snapshot_capture_1048576": {
+      "samples": 3,
+      "median_ms": 10.453,
+      "min_ms": 3.453,
+      "max_ms": 11.979,
+      "query_counts": [
+        0,
+        0,
+        0
+      ]
+    },
+    "scan_to_decision_1048576": {
+      "samples": 3,
+      "median_ms": 342.156,
+      "min_ms": 321.559,
+      "max_ms": 342.246,
+      "query_counts": [
+        36,
+        36,
+        36
+      ]
+    },
+    "release_preflight_1048576": {
+      "samples": 3,
+      "median_ms": 295.744,
+      "min_ms": 267.12,
+      "max_ms": 298.109,
+      "query_counts": [
+        26,
+        26,
+        26
+      ]
+    },
+    "python_peak_bytes_1048576": {
+      "samples": 3,
+      "maximum": 10843984
+    },
+    "snapshot_capture_10485760": {
+      "samples": 3,
+      "median_ms": 32.165,
+      "min_ms": 23.822,
+      "max_ms": 32.195,
+      "query_counts": [
+        0,
+        0,
+        0
+      ]
+    },
+    "scan_to_decision_10485760": {
+      "samples": 3,
+      "median_ms": 1937.157,
+      "min_ms": 1884.558,
+      "max_ms": 3185.239,
+      "query_counts": [
+        36,
+        36,
+        36
+      ]
+    },
+    "release_preflight_10485760": {
+      "samples": 3,
+      "median_ms": 437.36,
+      "min_ms": 327.307,
+      "max_ms": 464.326,
+      "query_counts": [
+        26,
+        26,
+        26
+      ]
+    },
+    "python_peak_bytes_10485760": {
+      "samples": 3,
+      "maximum": 12966083
+    },
+    "hmac_append": {
+      "samples": 10,
+      "median_ms": 14.247,
+      "min_ms": 10.735,
+      "max_ms": 32.608,
+      "query_counts": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ]
+    },
+    "audit_verify": {
+      "samples": 10,
+      "median_ms": 40.364,
+      "min_ms": 30.704,
+      "max_ms": 99.919,
+      "query_counts": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ]
+    },
+    "blocked_scan_with_incident": {
+      "samples": 3,
+      "median_ms": 95.968,
+      "min_ms": 95.391,
+      "max_ms": 111.151,
+      "query_counts": [
+        44,
+        44,
+        44
+      ]
+    }
+  },
+  "limitations": [
+    "Single process, sequential samples, local filesystem; not a throughput SLA.",
+    "Scan/release measured with tracemalloc enabled; Python peak is not process RSS.",
+    "Preflight includes chain verification, digest checks, DB commit and external checkpoint; no network transport timing.",
+    "Append timing excludes surrounding transaction commit; incident timing includes scan and decision.",
+    "Query counts include transaction lock and audit operations; audit history grows during samples."
+  ]
+}

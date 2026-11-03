@@ -113,3 +113,30 @@ denominators. Separate detector recall from correct enforcement of its decision:
 a correctly enforced ALLOW may still be a false negative. CDC comparisons require
 a real validated implementation; no placeholder results. A two-second warm local
 1 MiB target is unmeasured, not an achieved benchmark.
+
+## Phase 03 gates
+
+Run `python -B scripts/verify_phase03.py`, `python -B scripts/export_openapi.py`,
+`python -B scripts/audit_publication.py`, and `python -B scripts/benchmark_phase03.py`.
+Start the existing external `tests.browser_server` harness plus Vite, then run
+`python -B scripts/browser_phase03.py`. Browser tests independently hash the actual saved
+HTTP response, forge a release for BLOCK, resolve/export incidents and verify the HMAC chain.
+
+`test_gateway.py` covers positive/zero-content-negative HTTP paths, ownership, CSRF, public
+mode, stale registry/policy, expiry, missing/modified snapshot, persisted digest/length
+corruption, single use, concurrent release and idempotency, pending/rate caps, database and
+mandatory audit/checkpoint failures, snapshot disappearance, immutable-buffer mutation,
+recovery, incident permissions/version conflicts and malformed IDs/filenames. Controlled
+thread barriers prove policy/registry changes wait for release acquisition. ASGI send-failure
+and disconnect probes verify DELIVERY_UNKNOWN semantics; they do not infer recipient receipt.
+
+`test_audit.py` uses an independent HMAC reference, mutation/reorder/deletion/canonical/key
+faults, immutable triggers, concurrent append ordering, rotation and externally anchored
+tail truncation. An explicit test demonstrates the uncheckpointed tail limitation.
+Existing cryptographic tests and 606 subtests remain unchanged. The sole replaced Phase 02
+contract assertion is ?no release API exists?; it now permits exactly the controlled route.
+
+All database-dependent tests share the SQLite/PostgreSQL fixture. Set the dedicated test
+DSN or observe candidate CI; do not claim PostgreSQL from SQLite alone. Linux CI exercises
+POSIX symlinks/modes; Windows runs additionally exercise DACL validation. A Windows account
+without symlink creation privilege cannot prove native symlink creation coverage locally.

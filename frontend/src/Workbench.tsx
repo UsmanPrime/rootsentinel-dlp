@@ -1,3 +1,4 @@
+import { TransferWorkbench } from './TransferWorkbench';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, fixture, jsonBody, type Asset, type Auth, type Policy, type Scan } from './api';
 
@@ -54,8 +55,8 @@ export function Workbench() {
     });
   }
   return <section className="workbench" aria-labelledby="workbench-title">
-    <div className="section-heading"><h2 id="workbench-title">Local detection workbench</h2><span>Phase 02 / real backend processing</span></div>
-    <p>Use locally bootstrapped accounts and synthetic fixtures. A policy ALLOW is an evaluation result; no file delivery is available.</p>
+    <div className="section-heading"><h2 id="workbench-title">Local detection workbench</h2><span>Real backend processing</span></div>
+    <p>Use locally bootstrapped accounts and synthetic fixtures. A scan ALLOW is only an evaluation. Use the controlled transfer panel for a separately authorized, verified download.</p>
     {checking && <p role="status">Checking backend session…</p>}
     {error && <div className="notice error" role="alert">Request could not complete: {error}. No release was authorized. Check that the local API is running and your session is valid.</div>}
     {message && <p className="notice" role="status">{message}</p>}
@@ -70,6 +71,7 @@ export function Workbench() {
           await api('/auth/logout', { method: 'POST' }, auth.csrf_token);
           setAuth(null); setAssets([]); setPolicy(null); setScan(null);
         })}>Sign out</button></div>
+      <TransferWorkbench auth={auth} />
       <div className="work-grid">
         {auth.user.role !== 'EMPLOYEE' && <article className="card">
           <h3>Protected asset registry</h3>

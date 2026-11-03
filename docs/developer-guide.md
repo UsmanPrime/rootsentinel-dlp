@@ -176,3 +176,17 @@ the native-filesystem staging adapter remains a later implementation.
 Default mode is `public_demo` and refuses operational requests, so accidental startup
 does not expose arbitrary uploads. Do not deploy local mode publicly. Secure cookies
 are mandatory outside explicit loopback configuration. See [authentication](authentication.md).
+
+## Phase 03 setup
+
+Before running mutation APIs, provision a persistent audit key and independent checkpoint
+location following [deployment.md](deployment.md), then `python -m alembic upgrade head`.
+Do not automatically create replacement keys on restart. Old verification keys must remain
+available after rotation. A missing key makes mandatory operations fail closed. Run one
+Uvicorn worker only. The retained snapshot directory is separate from transient intake.
+
+`scripts/verify_phase03.py` records sanitized regression/typecheck/build/fixture results;
+`scripts/browser_phase03.py` exercises actual download bytes, denied forged release,
+incident resolution/export and audit verification with the existing external browser harness.
+`scripts/benchmark_phase03.py` records synthetic SQLite timing/query/allocation samples.
+No script publishes secrets, runtime data or private filesystem locations.

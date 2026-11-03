@@ -19,6 +19,9 @@ class Settings:
     origin: str = "http://127.0.0.1:5173"
     secure_cookies: bool = True
     session_seconds: int = 3600
+    audit_key_file: Path | None = None
+    checkpoint_root: Path | None = None
+    retention_seconds: int = 900
 
     def __post_init__(self):
         if self.mode not in {"local", "public_demo"}:
@@ -32,6 +35,13 @@ class Settings:
             raise ValueError("Invalid session lifetime")
         validate_external_path(self.paths.runtime, SOURCE_ROOT)
         validate_external_path(self.paths.artifacts, SOURCE_ROOT)
+        if not 1 <= self.retention_seconds <= 900:
+            raise ValueError("Retention must be 1 through 900 seconds")
+        for path in (self.audit_key_file, self.checkpoint_root):
+            if path is not None:
+                resolved = validate_external_path(path, SOURCE_ROOT)
+                if self.paths.runtime.resolve() in resolved.parents or resolved == self.paths.runtime.resolve():
+                    raise ValueError("Audit keys/checkpoints must be independent of runtime storage")
         url = make_url(self.database_url)
         if url.drivername == "sqlite":
             if not url.database or url.database == ":memory:":
@@ -50,6 +60,8 @@ class Settings:
             os.environ.get("ROOTSENTINEL_MODE", "public_demo"),
             os.environ.get("ROOTSENTINEL_ORIGIN", "http://127.0.0.1:5173"),
             os.environ.get("ROOTSENTINEL_SECURE_COOKIES", "true") != "false",
+            audit_key_file=Path(os.environ["ROOTSENTINEL_AUDIT_KEY_FILE"]) if os.environ.get("ROOTSENTINEL_AUDIT_KEY_FILE") else None,
+            checkpoint_root=Path(os.environ["ROOTSENTINEL_CHECKPOINT_ROOT"]) if os.environ.get("ROOTSENTINEL_CHECKPOINT_ROOT") else None,
         )
 
     def prepare_storage(self):

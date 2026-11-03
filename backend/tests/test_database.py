@@ -18,6 +18,7 @@ def test_migration_indexes_constraints_and_repeatability(system):
         "alembic_version", "users", "sessions", "assets", "asset_versions", "asset_chunks",
         "registry_revisions", "registry_state", "policy_versions", "scan_evaluations",
         "matching_evidence", "policy_decisions",
+        "transfers", "release_attempts", "incidents", "incident_history", "audit_heads", "audit_events",
     }
     assert "ix_exact_match" in {i["name"] for i in inspector.get_indexes("asset_versions")}
     assert "ix_block_match" in {i["name"] for i in inspector.get_indexes("asset_chunks")}

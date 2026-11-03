@@ -18,7 +18,7 @@ function App() {
           <span className="brand-icon" aria-hidden="true">R<span>·</span></span>
           <span>RootSentinel <span className="brand-label">DLP</span></span>
         </a>
-        <span className="phase"><span aria-hidden="true" /> Phase 02 · Detection</span>
+        <span className="phase"><span aria-hidden="true" /> Phase 03 · Controlled transfer</span>
       </header>
       <main id="content">
         <section className="hero" aria-labelledby="title">
@@ -26,7 +26,7 @@ function App() {
           <h1 id="title">Understand the evidence.<br /><span>Control the release.</span></h1>
           <p className="intro">A cryptographic foundation for protecting registered source code at a controlled outbound gateway.</p>
           <a className="text-link" href="#foundation">Explore the foundation <span aria-hidden="true">↘</span></a>
-          <div className="scope-note"><strong>Local detection and policy</strong><p>The authenticated workbench processes synthetic files through the backend. File release and public deployment are not available yet.</p></div>
+          <div className="scope-note"><strong>Local detection and policy</strong><p>The authenticated workbench processes synthetic files through the backend. Local transfers now use verified, single-use downloads. Public deployment remains unavailable.</p></div>
         </section>
         <Workbench />
         <section id="foundation" aria-labelledby="foundation-title">

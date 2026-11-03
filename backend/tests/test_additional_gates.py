@@ -61,14 +61,16 @@ def test_upload_stream_uses_actual_bytes_without_content_length(system):
     assert not list(system[0].paths.snapshots.iterdir())
 
 
-def test_asgi_disconnect_is_not_a_scan(client, login, system):
+@pytest.mark.parametrize("endpoint", ["scans", "transfers"])
+def test_asgi_disconnect_is_not_a_scan(client, login, system, endpoint):
     login(client)
     cookie = client.cookies.get(COOKIE)
     headers = [(b"host", b"127.0.0.1:5173"), (b"origin", system[0].origin.encode()),
                (b"content-type", b"application/octet-stream"), (b"cookie", f"{COOKIE}={cookie}".encode()),
-               (b"x-csrf-token", client.headers["x-csrf-token"].encode())]
-    scope = {"type": "http", "asgi": {"version": "3.0"}, "method": "POST", "path": "/api/v1/scans",
-             "raw_path": b"/api/v1/scans", "query_string": b"", "headers": headers, "http_version": "1.1",
+               (b"x-csrf-token", client.headers["x-csrf-token"].encode()), (b"idempotency-key", str(uuid4()).encode())]
+    route = "/api/v1/" + endpoint
+    scope = {"type": "http", "asgi": {"version": "3.0"}, "method": "POST", "path": route,
+             "raw_path": route.encode(), "query_string": b"", "headers": headers, "http_version": "1.1",
              "scheme": "http", "server": ("127.0.0.1", 5173), "client": ("127.0.0.1", 4000)}
     async def exercise():
         messages = iter([{"type": "http.request", "body": b"partial", "more_body": True}, {"type": "http.disconnect"}])

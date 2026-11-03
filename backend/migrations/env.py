@@ -3,6 +3,7 @@ from alembic import context
 
 from app.db import Database, Base
 from app import models  # noqa: F401
+from app import gateway_models  # noqa: F401
 from app.settings import Settings
 
 config = context.config

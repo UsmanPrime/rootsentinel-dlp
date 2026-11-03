@@ -34,3 +34,9 @@ playwright-report/
 *.log
 .DS_Store
 Thumbs.db
+
+# Defense in depth: audit secrets and browser harness credentials stay external.
+audit-keys.json
+browser-session.json
+checkpoint-*.json
+*.blob
