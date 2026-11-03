@@ -1,7 +1,7 @@
 {
-  "current_verdict": "BLOCKED_COMMIT_PERMISSION",
+  "current_verdict": "PASS",
   "local_finalization": {
-    "status": "BLOCKED_COMMIT_PERMISSION",
+    "status": "PASS",
     "remote_verification": {
       "source": "User confirmation from normal Windows PowerShell",
       "empty": true,
@@ -41,16 +41,10 @@
       "whitespace_check": "PASS",
       "dependency_integrity_entries": 72
     },
-    "checkpoint_commit": null,
+    "checkpoint_commit": "c552b217812793d19a03a521d06b9a1cdf6aa825",
     "pushed": false,
     "deployed": false,
     "phase_02_started": false,
-    "commit_attempt": {
-      "command": "git commit -m \"feat: establish Phase 01 cryptographic foundation\"",
-      "exit_code": 1,
-      "error": "Permission denied creating .git/index.lock",
-      "escalation_available": false
-    },
     "staged_files": [
       ".env.example",
       ".gitattributes",
@@ -92,20 +86,31 @@
       "frontend/vite.config.ts",
       "scripts/fixtures.py"
     ],
-    "git_status": {
+    "previous_commit_attempt": {
+      "command": "git commit -m \"feat: establish Phase 01 cryptographic foundation\"",
+      "exit_code": 1,
+      "error": "Permission denied creating .git/index.lock",
+      "escalation_available": false
+    },
+    "commit_attempt": {
+      "command": "git commit -m \"feat: establish Phase 01 cryptographic foundation\"",
+      "exit_code": 0,
+      "approved_escalation": true,
+      "checkpoint_commit": "c552b217812793d19a03a521d06b9a1cdf6aa825"
+    },
+    "git_status_at_checkpoint": {
       "branch": "main",
       "origin": "https://github.com/UsmanPrime/rootsentinel-dlp.git",
-      "commits": 0,
+      "commits": 1,
       "upstream": null,
-      "staged_additions": 39,
+      "staged_additions": 0,
       "unstaged_changes": 0,
       "untracked_files": 0,
-      "note": "Final evidence updates are staged; no checkpoint commit exists."
-    }
+      "observation": "Clean immediately after initial checkpoint, before this documentation update."
+    },
+    "evidence_commit": "Recorded by a separate documentation commit directly after checkpoint; use git history for its SHA."
   },
   "verification_date": "2026-11-03",
-  "verdict": "BLOCKED",
-  "reason": "GitHub outbound TCP blocked; remote history and repository onboarding unverified.",
   "checks": [
     {
       "command": "python -B -m pytest -p no:cacheprovider -q",
@@ -207,5 +212,7 @@
     "new_files": [
       "docs/evidence/phase-01-final-checks.json"
     ]
-  }
+  },
+  "historical_verdict": "BLOCKED",
+  "historical_reason": "GitHub outbound TCP blocked; remote history and repository onboarding unverified."
 }

@@ -1,7 +1,7 @@
 # Phase 01 completion report
 
-Date: 2026-11-03. **Current verdict: BLOCKED on checkpoint commit permission;
-local validation and security audit PASS.** The owner completed onboarding of the verified-empty
+Date: 2026-11-03. **Current verdict: PASS — local Phase 01 checkpoint committed;
+validation and security audit PASS.** The owner completed onboarding of the verified-empty
 remote manually. The dated blocked reviews below are retained as historical
 evidence and are superseded by the final local-checkpoint section.
 
@@ -270,3 +270,33 @@ labelled Phase 01 foundation after separate push authorization. An explicit lice
 is still a team choice. Hosted CI, clean connected installs, dependency advisories
 and WSL/Docker execution remain unverified release/later-phase checks. These are
 not claims of working DLP enforcement. Phase 02 is not implemented in this review.
+
+## Checkpoint closure — current authoritative result
+
+**Phase 01 PASS.** The updated session approval policy allowed the explicitly
+authorized local commit to execute with approved escalation. The previous
+filesystem blocker is resolved; earlier failure records remain historical.
+
+Initial checkpoint: `c552b217812793d19a03a521d06b9a1cdf6aa825`
+
+Subject: `feat: establish Phase 01 cryptographic foundation`.
+The root commit contains all 39 reviewed files. Immediately afterward,
+`git status --porcelain=v1` returned no entries on `main`. Origin remains
+`https://github.com/UsmanPrime/rootsentinel-dlp.git`; no upstream is configured
+because no branch has been pushed.
+
+The existing fresh validation remains applicable: 22 tests plus 606 subtests,
+11 fixture manifests, frontend typecheck/build, and the staged security and
+whitespace checks passed. Only documentation/evidence is changed in this closure;
+working cryptographic functionality is untouched.
+
+This SHA record and the updated JSON/README are included in a separate documentation
+commit directly following the checkpoint. Its own SHA is obtained from Git history
+rather than embedded into itself. Final working-tree cleanliness is checked after
+that commit; the final response records its SHA and complete status.
+
+The audited repository is suitable to publish as a Phase 01 foundation after
+separate push authorization. Licensing, hosted CI, dependency advisory review,
+clean connected installation and WSL/Docker readiness remain documented follow-up
+checks. Phase 02 may begin when authorized; it was not started here. No push or
+deployment occurred, and original instructor documents remain unchanged.

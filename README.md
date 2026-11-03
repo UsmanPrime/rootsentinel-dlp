@@ -67,9 +67,9 @@ build output are ignored by Git; Git-ignore does not exclude OneDrive syncing.
 
 The owner verified the existing remote was empty using a successful `git ls-remote`
 and initialized this local repository on `main` with the correct origin. Phase 01
-validation passes; the audited files are staged, but the sandbox denied the local
-commit. See the completion report for verification and the remaining checkpoint
-step. Publishing remains a separate authorized action.
+validation passes and the audited foundation is committed locally. See the completion
+report for the checkpoint SHA and verification evidence. Publishing remains a
+separate authorized action.
 
 The course requires exactly three students. Named ownership and actual contribution
 history must be recorded by the team; neither is fabricated here. Licensing remains
