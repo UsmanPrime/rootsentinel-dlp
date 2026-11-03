@@ -1,0 +1,67 @@
+{
+  "phase": "03",
+  "observed_at_utc": "2026-11-03T17:14:39.954373+00:00",
+  "baseline": "566c2df540e013a56010af7cd1485e55832da6ac",
+  "implementation_commit": "2c75f72656f3f9e45b8ed66b83e2a06972dec2b3",
+  "candidate_branch": "phase03-gateway-verification",
+  "origin": "https://github.com/UsmanPrime/rootsentinel-dlp.git",
+  "ci": {
+    "run_id": 41681697785,
+    "url": "https://github.com/UsmanPrime/rootsentinel-dlp/actions/runs/41681697785",
+    "status": "completed",
+    "conclusion": "success",
+    "jobs": {
+      "backend (3.12)": "success",
+      "frontend": "success",
+      "postgres": "success",
+      "backend (3.13)": "success"
+    },
+    "test_results": {
+      "backend (3.12)": {
+        "passed": 159,
+        "seconds": 27.68
+      },
+      "backend (3.13)": {
+        "passed": 159,
+        "seconds": 33.15
+      },
+      "postgres": {
+        "passed": 273,
+        "subtests_passed": 606,
+        "seconds": 71.83,
+        "scope": "Combined SQLite and PostgreSQL 17 fixtures; shared unit tests run once."
+      }
+    }
+  },
+  "local": {
+    "passed": 159,
+    "cryptographic_subtests_passed": 606,
+    "fixture_manifests_verified": 11,
+    "frontend_typecheck": "PASS",
+    "frontend_build": "PASS",
+    "real_browser": "PASS",
+    "post_lock_change_gateway_tests": 41
+  },
+  "publication_audit": "phase-03-publication-audit.json",
+  "implemented_database_tables": 6,
+  "release_verification": {
+    "blocked_bytes_withheld": true,
+    "allowed_response_independent_hash_and_byte_equality": true,
+    "concurrent_single_use": true,
+    "database_and_audit_failure_denied": true,
+    "stale_and_tampered_snapshot_denied": true,
+    "checkpoint_and_rotation_tests": "PASS"
+  },
+  "implementation_verdict": "PASS",
+  "publication": {
+    "candidate_push": "PASS",
+    "main_at_evidence_time": "566c2df540e013a56010af7cd1485e55832da6ac",
+    "strategy": "This documentation checkpoint is committed and candidate-CI validated before normal fast-forward main promotion. Final synchronization is reported in the completion message and Git refs; no self-referential commit SHA is fabricated."
+  },
+  "deployed": false,
+  "phase04_started": false,
+  "completion_evidence_privacy_audit": {
+    "candidate_count": 109,
+    "findings": []
+  }
+}

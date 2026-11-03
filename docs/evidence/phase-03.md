@@ -77,7 +77,7 @@ preservation are tested. POSIX symlink coverage runs in Linux CI; Windows native
 creation may be unavailable to the test account. No system permissions were changed.
 
 The local Docker Linux engine was unavailable, so PostgreSQL is **not claimed as locally
-tested**. Candidate CI must validate the PostgreSQL 17 fixture before main publication.
+tested**. The candidate PostgreSQL 17 CI fixture passed; see the hosted results below.
 
 ## Real-browser evidence
 
@@ -129,4 +129,18 @@ dependencies deny release and can require operator recovery. Public mode is clos
 Phase 04 should consume the typed REST/OpenAPI contracts; preserve the release invariant,
 ownership/CSRF checks, terminal/uncertain states and truthful audit limitations.
 
-Current checkpoint status: local implementation gates pass; hosted CI/publication pending.
+## Verified candidate CI and checkpoint
+
+Implementation commit: `2c75f72656f3f9e45b8ed66b83e2a06972dec2b3`.
+[Candidate run 41681697785](https://github.com/UsmanPrime/rootsentinel-dlp/actions/runs/41681697785)
+completed successfully: backend Python 3.12 (159 tests, 27.68 s), backend Python 3.13
+(159 tests, 33.15 s), frontend typecheck/build, and PostgreSQL 17 combined fixture run
+(273 tests plus 606 cryptographic subtests, 71.83 s). All four jobs passed, including
+clean-worktree checks. This validates the actual PostgreSQL locking/migration behavior,
+not an inference from SQLite.
+
+Implementation verdict: **PASS**. [phase-03-checkpoint.json](phase-03-checkpoint.json)
+records exact observed results and the implementation SHA. This evidence-only checkpoint
+is candidate-CI validated before normal fast-forward main promotion. Final publication
+SHA, CI link and remote synchronization are provided by Git refs and the completion
+report; the evidence file does not invent a self-referential commit hash.
