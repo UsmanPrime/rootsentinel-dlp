@@ -1,0 +1,211 @@
+{
+  "current_verdict": "BLOCKED_COMMIT_PERMISSION",
+  "local_finalization": {
+    "status": "BLOCKED_COMMIT_PERMISSION",
+    "remote_verification": {
+      "source": "User confirmation from normal Windows PowerShell",
+      "empty": true,
+      "command": "git ls-remote",
+      "exit_code": 0
+    },
+    "local": {
+      "branch": "main",
+      "origin": "https://github.com/UsmanPrime/rootsentinel-dlp.git",
+      "prior_commits": 0
+    },
+    "checks": [
+      {
+        "command": "python -B -m pytest -p no:cacheprovider -q",
+        "exit_code": 0,
+        "output": "....... [ 31%]\n...............                     [100%]\n22 passed, 606 subtests passed in 0.31s\n"
+      },
+      {
+        "command": "python -B scripts/fixtures.py",
+        "exit_code": 0,
+        "output": "Verified 11 synthetic fixture manifests.\n"
+      },
+      {
+        "command": "npm run typecheck && npm run build",
+        "exit_code": 0,
+        "output": "\n> rootsentinel-ui@0.1.0 typecheck\n> tsc --noEmit\n\n\n> rootsentinel-ui@0.1.0 build\n> tsc --noEmit && vite build\n\nvite v7.3.7 building client environment for production...\ntransforming...\n✓ 28 modules transformed.\nrendering chunks...\ncomputing gzip size...\ndist/index.html                   0.67 kB │ gzip:  0.40 kB\ndist/assets/index-CWyXcYdP.css    3.66 kB │ gzip:  1.28 kB\ndist/assets/index-9UeGtqgv.js   226.32 kB │ gzip: 70.75 kB\n✓ built in 1.00s\n"
+      }
+    ],
+    "audit": {
+      "initial_candidates": 38,
+      "findings": [],
+      "generated_artifacts_excluded": true,
+      "crypto_changes": false,
+      "scope": "Every candidate read; bounded credential/path/private-file scan plus staged-diff review",
+      "staged_files_reviewed": 39,
+      "full_diff_reviewed": true,
+      "whitespace_check": "PASS",
+      "dependency_integrity_entries": 72
+    },
+    "checkpoint_commit": null,
+    "pushed": false,
+    "deployed": false,
+    "phase_02_started": false,
+    "commit_attempt": {
+      "command": "git commit -m \"feat: establish Phase 01 cryptographic foundation\"",
+      "exit_code": 1,
+      "error": "Permission denied creating .git/index.lock",
+      "escalation_available": false
+    },
+    "staged_files": [
+      ".env.example",
+      ".gitattributes",
+      ".github/workflows/ci.yml",
+      ".gitignore",
+      "CONTRIBUTING.md",
+      "README.md",
+      "SECURITY.md",
+      "backend/app/__init__.py",
+      "backend/app/config.py",
+      "backend/app/crypto/__init__.py",
+      "backend/app/crypto/fingerprints.py",
+      "backend/app/crypto/merkle.py",
+      "backend/app/crypto/models.py",
+      "backend/pyproject.toml",
+      "backend/requirements-dev.lock",
+      "backend/tests/__init__.py",
+      "backend/tests/test_config.py",
+      "backend/tests/test_crypto.py",
+      "docs/architecture.md",
+      "docs/cryptographic-spec.md",
+      "docs/developer-guide.md",
+      "docs/evidence/phase-01-final-checks.json",
+      "docs/evidence/phase-01.md",
+      "docs/master-plan.md",
+      "docs/requirements.md",
+      "docs/research.md",
+      "docs/testing.md",
+      "fixtures/manifest.json",
+      "frontend/index.html",
+      "frontend/package-lock.json",
+      "frontend/package.json",
+      "frontend/public/favicon.svg",
+      "frontend/src/crypto-contract.ts",
+      "frontend/src/main.tsx",
+      "frontend/src/styles.css",
+      "frontend/src/tokens.css",
+      "frontend/tsconfig.json",
+      "frontend/vite.config.ts",
+      "scripts/fixtures.py"
+    ],
+    "git_status": {
+      "branch": "main",
+      "origin": "https://github.com/UsmanPrime/rootsentinel-dlp.git",
+      "commits": 0,
+      "upstream": null,
+      "staged_additions": 39,
+      "unstaged_changes": 0,
+      "untracked_files": 0,
+      "note": "Final evidence updates are staged; no checkpoint commit exists."
+    }
+  },
+  "verification_date": "2026-11-03",
+  "verdict": "BLOCKED",
+  "reason": "GitHub outbound TCP blocked; remote history and repository onboarding unverified.",
+  "checks": [
+    {
+      "command": "python -B -m pytest -p no:cacheprovider -q",
+      "working_directory": "backend",
+      "python": "3.13.4",
+      "environment": {
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+      },
+      "exit_code": 0,
+      "output": "....... [ 31%]\n...............                     [100%]\n22 passed, 606 subtests passed in 0.33s\n"
+    },
+    {
+      "command": "python -B -m unittest discover -s tests -v",
+      "working_directory": "backend",
+      "python": "3.12.12",
+      "exit_code": 0,
+      "output": "test_external_paths_without_filesystem_mutation (test_config.ConfigTests.test_external_paths_without_filesystem_mutation) ... ok\ntest_onedrive_and_named_sync_root_rejected (test_config.ConfigTests.test_onedrive_and_named_sync_root_rejected) ... ok\ntest_repository_and_relative_paths_rejected (test_config.ConfigTests.test_repository_and_relative_paths_rejected) ... ok\ntest_runtime_and_artifacts_do_not_overlap (test_config.ConfigTests.test_runtime_and_artifacts_do_not_overlap) ... ok\ntest_all_leaves_and_variable_tree_shapes (test_crypto.CryptoTests.test_all_leaves_and_variable_tree_shapes) ... ok\ntest_chunk_boundaries (test_crypto.CryptoTests.test_chunk_boundaries) ... ok\ntest_descriptor_has_independent_fixed_encoding (test_crypto.CryptoTests.test_descriptor_has_independent_fixed_encoding) ... ok\ntest_deterministic_serialization (test_crypto.CryptoTests.test_deterministic_serialization) ... ok\ntest_domain_separation (test_crypto.CryptoTests.test_domain_separation) ... ok\ntest_empty_tree (test_crypto.CryptoTests.test_empty_tree) ... ok\ntest_full_file_verification_is_separate (test_crypto.CryptoTests.test_full_file_verification_is_separate) ... ok\ntest_invalid_fingerprint_and_proof_creation (test_crypto.CryptoTests.test_invalid_fingerprint_and_proof_creation) ... ok\ntest_invalid_manifests (test_crypto.CryptoTests.test_invalid_manifests) ... ok\ntest_invalid_streams_and_types (test_crypto.CryptoTests.test_invalid_streams_and_types) ... ok\ntest_known_sha256_vectors (test_crypto.CryptoTests.test_known_sha256_vectors) ... ok\ntest_maximum_and_oversize (test_crypto.CryptoTests.test_maximum_and_oversize) ... ok\ntest_mutation_and_reordering (test_crypto.CryptoTests.test_mutation_and_reordering) ... ok\ntest_raw_encoding_and_newlines (test_crypto.CryptoTests.test_raw_encoding_and_newlines) ... ok\ntest_short_reads_do_not_change_boundaries (test_crypto.CryptoTests.test_short_reads_do_not_change_boundaries) ... ok\ntest_stream_current_position (test_crypto.CryptoTests.test_stream_current_position) ... ok\ntest_tampered_proofs_fail (test_crypto.CryptoTests.test_tampered_proofs_fail) ... ok\ntest_tree_shape_independent_expectations (test_crypto.CryptoTests.test_tree_shape_independent_expectations) ... ok\n\n----------------------------------------------------------------------\nRan 22 tests in 0.278s\n\nOK\n"
+    },
+    {
+      "command": "python -B scripts/fixtures.py",
+      "working_directory": ".",
+      "exit_code": 0,
+      "output": "Verified 11 synthetic fixture manifests.\n"
+    },
+    {
+      "command": "npm run typecheck && npm run build",
+      "working_directory": "frontend",
+      "node": "24.11.0",
+      "npm": "11.6.1",
+      "exit_code": 0,
+      "output": "\n> rootsentinel-ui@0.1.0 typecheck\n> tsc --noEmit\n\n\n> rootsentinel-ui@0.1.0 build\n> tsc --noEmit && vite build\n\nvite v7.3.7 building client environment for production...\ntransforming...\n✓ 28 modules transformed.\nrendering chunks...\ncomputing gzip size...\ndist/index.html                   0.67 kB │ gzip:  0.40 kB\ndist/assets/index-CWyXcYdP.css    3.66 kB │ gzip:  1.28 kB\ndist/assets/index-9UeGtqgv.js   226.32 kB │ gzip: 70.75 kB\n✓ built in 1.37s\n"
+    }
+  ],
+  "connectivity": {
+    "dns": "github.com, api.github.com and registry.npmjs.org resolved",
+    "tcp_443": "Windows socket error 10013 for all three hosts; no TLS handshake",
+    "proxy": "No proxy environment values, system proxy schemes or Git URL-specific HTTP proxy configured",
+    "tls_verification": "No Git sslVerify override found; verification was not disabled",
+    "gh_version": "2.101.0",
+    "configured_account": "UsmanPrime",
+    "active_account": true,
+    "credential_validity": "Unverified: gh auth status failed under outbound restrictions",
+    "remote_history": "Unknown",
+    "local_git_repository": false,
+    "commit": null,
+    "git_mutations": false
+  },
+  "hygiene": {
+    "source_candidate_files": 37,
+    "pattern_findings": [],
+    "npm_registry_integrity_entries": 72,
+    "python_development_pins_match": true,
+    "scope": "Bounded pattern scan, not a complete secret audit; no staged content exists"
+  },
+  "preservation": {
+    "verified_before_report_update": true,
+    "source_files_before": {
+      ".env.example": "17a07a1be7757da3228b38ef7057661a88273f639482cc7112bfd836ec2e421e",
+      ".github/workflows/ci.yml": "70577fd65ce7ac55b3a67b94305fdeb7592bfb26937cb4700d4d315e33e6064a",
+      ".gitignore": "7fce65b181bf33115ecc887453e802cddc6c5e910bf18bef25466845f67e5762",
+      "CONTRIBUTING.md": "e551dcceb3bbefce08bee4abb31c3c17dec56a83b45780c5d700b861a686c036",
+      "README.md": "793add02395c6a5cd7d548ce0a96bbfc13529d6a3288fae4b4c0e0bf5074f2e8",
+      "SECURITY.md": "eb700afb1da1b6e8ae650410308e438049be04fbdb911862cc028a4607fe5d00",
+      "backend/app/__init__.py": "5a23f68e17ab86f35a7f950364211e212fb8dda3ee3bd87b7f9cddd6db488afa",
+      "backend/app/config.py": "7fc3e6410be8d3bd224b01f14324623c729186fee8b9ef029172840774c15d68",
+      "backend/app/crypto/__init__.py": "33019ba1ac5c823eec38dd193541d6933698a0e2a16465e74c60b191897b7ed9",
+      "backend/app/crypto/fingerprints.py": "f28b31878aa06928fe9b2af554cd9e615c5dc1d3551aecf12459ddce66f491a7",
+      "backend/app/crypto/merkle.py": "e23a9236e6996917b4936ec4471db7bb7a4c2bdbd9ab3c1d6ee52fdb3eaf37e8",
+      "backend/app/crypto/models.py": "ea145de6a5035d883aba52c73bc02345a884740cade5bae33bcdf8450a5bb66a",
+      "backend/pyproject.toml": "4f63beb947da486c36ddb8f3edc7424ebc4b2d55f3749ca384456a98ff8c13c3",
+      "backend/requirements-dev.lock": "a39222080a02f3316624cb89d1b69103cdbe077d53a274de7dcbcd7da5de8917",
+      "backend/tests/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "backend/tests/test_config.py": "81ba44219334e2e56e446a3b4921b802583e48f376c02bb0a8bf74f9d1461722",
+      "backend/tests/test_crypto.py": "b585ffc8e36e14d1f1e0143e261de90a704198aa85d5828ea4b661df64c29396",
+      "docs/architecture.md": "47b23945b0f24fb7031cac253203e6b765eddfae454ea5859cd4be3dc89bffe0",
+      "docs/cryptographic-spec.md": "31e313cc2fbeacde2a360ebf3860e89ac61ac75850482df1577e68a4d72dc750",
+      "docs/developer-guide.md": "bf1a939c607acf97253bb817766d5ca9f1970206e39e78cc836f0bbe25733f35",
+      "docs/evidence/phase-01.md": "ab2c97cbc2a265ed76999b1f68fd8a47a93c11b59b34960adfcd39ae0c84cae3",
+      "docs/master-plan.md": "e2125878a4541a4699ee2820671afd7614c045119f2b7018c714d2219ffb13a3",
+      "docs/requirements.md": "2da92fd40faa289bb39ba109013c3b4f4544bff0c77e81df3678ac0d44a990f3",
+      "docs/research.md": "4e3ccde216c6c91308136cd2b35d29b6a8e9909383877aa72a9e9d8be9ca9e9d",
+      "docs/testing.md": "e603a34d8bcf71fccfbfe6b5c32bd0106432eb99840dd7e9ae4c26db6eb8e9cb",
+      "fixtures/manifest.json": "4105b9430356e280315d96c4315e5df2dd265c2afb6c441c59665fe1b3d47fed",
+      "frontend/index.html": "08ff4f7e02096fdb2f090d5185773f084e1cdd2784810d9dad8a086e5d294845",
+      "frontend/package-lock.json": "681fd52cebc80e63f1dd959dba649ce2561da65f33b4b79116e13bbe3fad1c21",
+      "frontend/package.json": "47fe71b384360a6e61f68a222fdd57b12d91a0eba695ffd38dffd43526265a3e",
+      "frontend/public/favicon.svg": "62795a034d18592a0027221f450f27eaad2bad39c5e7dc8849e3d9e4021f809e",
+      "frontend/src/crypto-contract.ts": "da10a482c33c608624e6aad8168a5ef4140b376b4b9ec7c5b1b8f438084f9dfb",
+      "frontend/src/main.tsx": "65fac38a061c4f1f713921b1f73783ad85fe91a5825d54729461a301be734de1",
+      "frontend/src/styles.css": "4ead85530bb44a6ca2f48d4574d2abe9cd7b8f0943dd8b2101b8c2f08b1c2a47",
+      "frontend/src/tokens.css": "552fbd260e09a9f054ff1b22fa7387c4af8a4cb42d1d5fa173bfac6d1a13c513",
+      "frontend/tsconfig.json": "e49c42a81fdf84e13ae93b2e5ad3da0f05447b1d9832c0788234c6aadc823836",
+      "frontend/vite.config.ts": "a4498c347f03cbd3ee1ce186a85604362cd50bcb662416ea8c6bf77e39bdd8a4",
+      "scripts/fixtures.py": "81066152d3a883deded94184e4a6668b1b4cec2fd8a446835b30502d678f0445"
+    },
+    "expected_modified_existing_files": [
+      "docs/evidence/phase-01.md"
+    ],
+    "new_files": [
+      "docs/evidence/phase-01-final-checks.json"
+    ]
+  }
+}

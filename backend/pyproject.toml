@@ -1,0 +1,14 @@
+[project]
+name = "rootsentinel-core"
+version = "0.1.0"
+description = "Deterministic fingerprint and Merkle foundation for RootSentinel DLP"
+requires-python = ">=3.12,<3.14"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest==9.1.1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"

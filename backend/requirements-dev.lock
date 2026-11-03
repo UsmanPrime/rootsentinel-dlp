@@ -1,0 +1,10 @@
+# Exact Phase 01 test dependency pins for Python 3.12/3.13.
+# Versions verified against the available Python 3.13 test environment.
+# A clean network installation remains a CI check.
+# This is a version lock, not a hash-verified supply-chain attestation.
+pytest==9.1.1
+iniconfig==2.3.0
+packaging==26.2
+pluggy==1.6.0
+pygments==2.20.0
+colorama==0.4.6 ; sys_platform == "win32"

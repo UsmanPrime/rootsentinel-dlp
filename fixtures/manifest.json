@@ -1,0 +1,105 @@
+{
+  "construction": "deterministic ASCII fixture blocks; no random seed required",
+  "fixtures": {
+    "aligned_embedding": {
+      "chunk_count": 10,
+      "chunk_size": 1024,
+      "file_sha256": "b0dd12ad051e6592cbfb7a107d850b1373d50596be8268debdfd6605bf538f86",
+      "file_size": 10240,
+      "merkle_root": "66eb1aba3b7c0a0014dcd64a7a78a00dbd82d7e978a5a2fc76d3e997e3e1ecd0",
+      "profile_id": "rs-fixed-sha256-v1",
+      "spec_version": 1
+    },
+    "aligned_partial": {
+      "chunk_count": 2,
+      "chunk_size": 1024,
+      "file_sha256": "73a4ca5f68c6bc1fc0e94fdc6a11afe6fb46102f9ba6f1aa7e3a0ec66c9a71fd",
+      "file_size": 2048,
+      "merkle_root": "f5c54a0ec93ef7dcf914ffff96d97e272f51a467a5ff2b45f6e96bd80e57c02a",
+      "profile_id": "rs-fixed-sha256-v1",
+      "spec_version": 1
+    },
+    "benign": {
+      "chunk_count": 3,
+      "chunk_size": 1024,
+      "file_sha256": "efecb5a34398f8906907275a3f4f8dc49da495c05281008fc0447bab0d95881d",
+      "file_size": 2720,
+      "merkle_root": "1022e603188a0bf5d26f18a47980bf2a164d892b67dd032f7ba1cf82026b7821",
+      "profile_id": "rs-fixed-sha256-v1",
+      "spec_version": 1
+    },
+    "crlf": {
+      "chunk_count": 9,
+      "chunk_size": 1024,
+      "file_sha256": "86dc773f41445b6be9a7782bc7d7fd16f7627d11310b36e3b35b57491559ab72",
+      "file_size": 8320,
+      "merkle_root": "242032be0a90c5d8b9442a35ed09714e28f189c3a64111c7a2f722be4fc87882",
+      "profile_id": "rs-fixed-sha256-v1",
+      "spec_version": 1
+    },
+    "empty": {
+      "chunk_count": 0,
+      "chunk_size": 1024,
+      "file_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file_size": 0,
+      "merkle_root": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "profile_id": "rs-fixed-sha256-v1",
+      "spec_version": 1
+    },
+    "protected": {
+      "chunk_count": 8,
+      "chunk_size": 1024,
+      "file_sha256": "1b329c7adc4531cda13b42ce9981c2ae1e247e1618dde3c28baa94888e99b31d",
+      "file_size": 8192,
+      "merkle_root": "b31d73c306e247c87e5431f2c9f4d62014967000d5efdcf78d0c6fb063cd06b9",
+      "profile_id": "rs-fixed-sha256-v1",
+      "spec_version": 1
+    },
+    "renamed": {
+      "chunk_count": 8,
+      "chunk_size": 1024,
+      "file_sha256": "1b329c7adc4531cda13b42ce9981c2ae1e247e1618dde3c28baa94888e99b31d",
+      "file_size": 8192,
+      "merkle_root": "b31d73c306e247c87e5431f2c9f4d62014967000d5efdcf78d0c6fb063cd06b9",
+      "profile_id": "rs-fixed-sha256-v1",
+      "spec_version": 1
+    },
+    "shifted": {
+      "chunk_count": 9,
+      "chunk_size": 1024,
+      "file_sha256": "d00f329135c097f467170010402122e40cadad3ba8ca4e3563b1b16caea70e2e",
+      "file_size": 8193,
+      "merkle_root": "97a7634ea70a2afa8e84ca78eda60f5b036d31e3f2e8954e4e22adc9059f0322",
+      "profile_id": "rs-fixed-sha256-v1",
+      "spec_version": 1
+    },
+    "single_byte_change": {
+      "chunk_count": 8,
+      "chunk_size": 1024,
+      "file_sha256": "ee05b8d286c0d0998026e226ead2a4337f1a9d8da2084af02fd554289000d35a",
+      "file_size": 8192,
+      "merkle_root": "7963c97553d7967b0f9402520e7f6e23559e313c4966d3893c7f1fc26e5d3f7a",
+      "profile_id": "rs-fixed-sha256-v1",
+      "spec_version": 1
+    },
+    "small": {
+      "chunk_count": 1,
+      "chunk_size": 1024,
+      "file_sha256": "3a2ec7916235acfef3531b0ce71e2e1e9b604cf66887aa6cd234f7a4b00b5d26",
+      "file_size": 33,
+      "merkle_root": "a95d0c134ad209b9ad927a741699d0d6749e5392702d2259c12e9526b2d16f4b",
+      "profile_id": "rs-fixed-sha256-v1",
+      "spec_version": 1
+    },
+    "utf16": {
+      "chunk_count": 16,
+      "chunk_size": 1024,
+      "file_sha256": "3d2b65470e784d12fb1c4dc6244038c85508de7ddbf19ed7f78e281b36272043",
+      "file_size": 16384,
+      "merkle_root": "8b769c557dda26bc7814f83f710e5928c6ee39a90ba0959095f7fbb4e527c6cc",
+      "profile_id": "rs-fixed-sha256-v1",
+      "spec_version": 1
+    }
+  },
+  "generator_version": 1
+}
