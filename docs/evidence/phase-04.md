@@ -102,3 +102,12 @@ accessible SVG/DOM with table alternatives.
   assistive-technology testing was done and WCAG conformance is not claimed.
 - Overview metrics are role-scoped aggregates computed on demand (no streaming or live monitoring).
 - Local-mode only; no public deployment. PostgreSQL results come from hosted CI only.
+
+## Publication and hosted CI
+
+Checkpoint `440455f` was first pushed to a candidate branch. Hosted run `42061316687` completed
+**success** on all five jobs: backend (3.12), backend (3.13), real-browser acceptance, frontend
+(typecheck, unit tests, build) and PostgreSQL. The same commit was then published to `main` as a
+normal fast-forward (`46bbe4f..440455f`); no force push or history rewrite. The first candidate push
+was rejected once by GitHub with a transient server-side error and succeeded unchanged on retry.
+This documentation-only follow-up commit records that result.
