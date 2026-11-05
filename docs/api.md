@@ -112,3 +112,15 @@ or unowned object, 409 blocked/stale/consumed/conflict, 410 newly detected expir
 422 invalid schemas/UUIDs, 429 rate/pending cap, 503 infrastructure/audit/integrity/capacity.
 A prior terminal EXPIRED record returns 409 on subsequent release attempts. See generated
 [OpenAPI](openapi.json) for precise schemas and [transfer contract](transfer-spec.md).
+
+## Phase 04 presentation APIs
+
+- `GET /api/v1/overview`: authenticated exact aggregates; EMPLOYEE sees own
+  transfers and no registry/incident/audit totals. Seven UTC days include today.
+- `GET /api/v1/assets/{asset_id}/versions/{version_id}/tree?index=0&offset=0&limit=16`:
+  ADMIN/ANALYST only. Returns registered manifest, real proof, server-computed tree
+  nodes and bounded chunk page. Limit 1?32; index 0?10239. Full tree at <=16 leaves,
+  selected proof path otherwise. No bytes or keys are returned.
+
+OpenAPI and generated frontend contracts are checked in. Run
+`python -B scripts/frontend_contracts.py --check` to detect type drift.

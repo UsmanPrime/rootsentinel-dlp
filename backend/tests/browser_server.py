@@ -38,6 +38,9 @@ def main():
         db = Database(settings.database_url)
         with db.transaction() as s:
             s.add(User(username="browser-admin", role="ADMIN", password_hash=HASHER.hash(password)))
+            # Isolated browser-only accounts share an ephemeral random credential.
+            for username, role in (("browser-analyst", "ANALYST"), ("browser-employee", "EMPLOYEE"), ("browser-other", "EMPLOYEE")):
+                s.add(User(username=username, role=role, password_hash=HASHER.hash(password)))
         db.engine.dispose()
         credential_file = state / "browser-session.json"
         with credential_file.open("x", encoding="utf-8") as handle:

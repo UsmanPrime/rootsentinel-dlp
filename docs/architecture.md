@@ -174,3 +174,11 @@ sequenceDiagram
   Gateway-->>Browser: Same verified buffer only
   Gateway->>Audit: STREAM_FINISHED or DELIVERY_UNKNOWN
 ```
+
+## Phase 04 presentation boundary
+
+The React workspace uses the existing authenticated APIs and adds only two read-only
+presentation endpoints: role-scoped SQL overview aggregates and bounded Merkle tree
+projections computed by the existing core. No schema or transfer enforcement changes.
+See [frontend architecture](frontend.md) for routes, request cancellation, session
+isolation and the browser-side supplementary download digest check.

@@ -15,7 +15,7 @@ def main():
         context = browser.new_context(viewport={"width": 1440, "height": 1100}, accept_downloads=True)
         page = context.new_page(); errors = []
         page.on("pageerror", lambda _: errors.append("pageerror"))
-        page.goto(os.environ.get("ROOTSENTINEL_ORIGIN", "http://127.0.0.1:5173"))
+        page.goto(os.environ.get("ROOTSENTINEL_ORIGIN", "http://127.0.0.1:5173") + "/legacy")
         page.get_by_label("Username", exact=True).fill(credentials["username"])
         page.get_by_label("Password", exact=True).fill(credentials["password"])
         page.get_by_role("button", name="Sign in", exact=True).click()

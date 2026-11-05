@@ -33,6 +33,7 @@ from .schemas import (
 from .settings import Settings
 from .transfers import Gateway
 from .gateway_api import install_routes
+from .presentation import install_presentation
 
 COOKIE = "rs_session"
 RAW_BODY = {"requestBody": {"required": True, "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}}
@@ -333,4 +334,5 @@ def create_app(settings: Settings | None = None):
             return get_scan(s, actor, str(scan_id))
 
     install_routes(app, principal, intake)
+    install_presentation(app, principal)
     return app

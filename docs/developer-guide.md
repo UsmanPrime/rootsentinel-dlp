@@ -190,3 +190,15 @@ Uvicorn worker only. The retained snapshot directory is separate from transient 
 incident resolution/export and audit verification with the existing external browser harness.
 `scripts/benchmark_phase03.py` records synthetic SQLite timing/query/allocation samples.
 No script publishes secrets, runtime data or private filesystem locations.
+
+## Phase 04 browser workspace
+
+The root route now opens the role-aware SOC workspace; `/legacy` preserves the
+earlier workbench. Vite must proxy `/api` to the configured backend. React Router
+requires SPA fallback to index.html for non-API deep links in a future static host.
+Do not route `/api` failures to HTML. No public deployment was added.
+Run `npm test` before building. Update `docs/openapi.json` using the existing export
+script, then `python -B scripts/frontend_contracts.py` after approved API changes.
+Node dependencies and build output are Git-ignored; they may still sync through
+OneDrive. Set `ROOTSENTINEL_FRONTEND_DIST` to an external application-owned artifact
+directory for high-volume builds. Runtime databases and keys remain external.

@@ -6,15 +6,28 @@ CS-3002 Information Security · Existing repository: [UsmanPrime/rootsentinel-dl
 
 ## Current state
 
-Phase 03: authenticated registry and detection, versioned policies, a controlled
-single-use transfer gateway, incident investigation and HMAC audit integrity.
+Phase 04 adds a complete role-aware browser workspace around the authenticated
+registry, versioned policies, controlled single-use transfer gateway, incident
+investigation and HMAC audit integrity. It includes a real interactive Merkle
+explorer, exact dashboard aggregates and a guided synthetic demonstration.
 **Local browser workflow is implemented. Public deployment and the Linux staging
 adapter remain future work.**
 
 The unchanged cryptographic core uses Python `hashlib`. The backend uses FastAPI,
-SQLAlchemy/Alembic and Argon2id. The workbench displays actual backend results.
+SQLAlchemy/Alembic and Argon2id. Every operational view displays actual backend results.
 A scan ALLOW alone never authorizes delivery; the gateway verifies bytes and current
 state again before a single-use download.
+
+## Screenshots
+
+Captured from the real application in Chrome against the ephemeral synthetic test
+backend (no mocked verdicts). Full set and viewport checks: `docs/evidence/phase-04/`.
+
+![Security overview at 1440 px](docs/evidence/phase-04/overview-1440.png)
+
+![Interactive Merkle explorer at 1440 px](docs/evidence/phase-04/integrity-1440.png)
+
+![Transfer gateway at 375 px](docs/evidence/phase-04/gateway-375.png)
 
 ## Intended product
 
@@ -47,6 +60,7 @@ With Node 22.12+ (below 25):
 cd frontend
 npm ci --ignore-scripts --no-audit --no-fund
 npm run typecheck
+npm test
 npm run build
 npm run dev
 ```
@@ -69,6 +83,8 @@ build output are ignored by Git; Git-ignore does not exclude OneDrive syncing.
 - [Detection limitations](docs/detection-spec.md)
 - [Database and migrations](docs/database.md)
 - [Authentication and authorization](docs/authentication.md)
+- [Frontend architecture, design system and guided demonstration](docs/frontend.md)
+- [Phase 04 verification evidence](docs/evidence/phase-04.md)
 
 ## Repository status and contributions
 

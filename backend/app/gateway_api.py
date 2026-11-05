@@ -152,13 +152,16 @@ def install_routes(app, principal, intake):
             raise
 
     @app.get("/api/v1/incidents", response_model=IncidentPage)
-    def incidents(actor: Actor, limit: Limit = 25, offset: Offset = 0, status: Literal["OPEN", "INVESTIGATING", "RESOLVED"] | None = None):
+    def incidents(actor: Actor, limit: Limit = 25, offset: Offset = 0, status: Literal["OPEN", "INVESTIGATING", "RESOLVED"] | None = None,
+                  severity: Literal["HIGH", "MEDIUM"] | None = None, order: Literal["newest", "oldest"] = "newest"):
         actor.require("ADMIN", "ANALYST")
         query = select(Incident)
         if status:
             query = query.where(Incident.status == status)
+        if severity:
+            query = query.where(Incident.severity == severity)
         with db.transaction() as s:
-            rows = s.scalars(query.order_by(Incident.created_at.desc(), Incident.id).offset(offset).limit(limit))
+            rows = s.scalars(query.order_by(Incident.created_at.desc() if order == "newest" else Incident.created_at.asc(), Incident.id).offset(offset).limit(limit))
             return IncidentPage(items=[{k: getattr(row, k) for k in ("id", "transfer_id", "severity", "status", "revision", "created_at")} for row in rows], offset=offset, limit=limit)
 
     @app.get("/api/v1/incidents/{identifier}", response_model=IncidentView)

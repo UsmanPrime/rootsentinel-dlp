@@ -78,3 +78,15 @@ per account, 30/account and 120/global transfer attempts/minute, 20,000 audit ev
 Deployment is one worker; restart clears in-memory rate buckets. Analysis notes are
 user-entered text: do not paste sensitive source or secrets into them. Export is unsigned
 metadata, not independently certified forensic evidence.
+
+## Phase 04 frontend boundary
+
+Route guards and hidden controls do not grant authorization. Every mutation retains
+server-side RBAC, ownership, Origin and CSRF checks. The client stores no sessions in
+localStorage and clears private views on logout/401. GET requests abort on navigation.
+React escapes untrusted text; no raw HTML rendering is used. Downloads use server
+generated names and a browser digest/length comparison before Blob saving. This is
+additional defense, not a replacement for pre-release server byte verification.
+Overview counts and tree views expose only authorized metadata; public mode remains
+closed. The static app requires same-origin routing and appropriate production CSP
+when deployment is addressed in a later phase.

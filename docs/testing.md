@@ -140,3 +140,17 @@ All database-dependent tests share the SQLite/PostgreSQL fixture. Set the dedica
 DSN or observe candidate CI; do not claim PostgreSQL from SQLite alone. Linux CI exercises
 POSIX symlinks/modes; Windows runs additionally exercise DACL validation. A Windows account
 without symlink creation privilege cannot prove native symlink creation coverage locally.
+
+## Phase 04 frontend verification
+
+Run `npm test`, `npm run typecheck` and `npm run build` from frontend. Unit tests
+cover isolated HTTP/CSRF/error behavior, same-tick mutation guards, tree projection
+rendering and independent downloaded-byte hashing. For real browser acceptance,
+start `python -B -m tests.browser_server` from backend with a NEW external
+`ROOTSENTINEL_BROWSER_STATE`, loopback `ROOTSENTINEL_ORIGIN`, and
+`ROOTSENTINEL_API_PORT`. Start Vite on the same configured origin with that API port.
+Then run `python -B scripts/browser_phase04.py` using the existing pinned Python
+Playwright environment and Chrome. Credentials are read only from the external
+harness file; screenshots contain synthetic records only. Never point the harness
+at an operator database. The report records actual axe results, keyboard checks,
+48 route/viewport checks, downloaded-byte equality and observed timings.

@@ -1,0 +1,13 @@
+{
+  "verdict": "PASS",
+  "checks": [
+    "expired transfer UI and real release denial",
+    "CSRF rejection",
+    "offline error and real recovery",
+    "real same-tick duplicate submission prevention",
+    "real session expiry clears private workspace",
+    "tampered audit chain displays actual verification failure",
+    "mandatory audit failure prevents release and safe UI error"
+  ],
+  "transport": "Real loopback API; controlled faults only in ephemeral synthetic browser database"
+}

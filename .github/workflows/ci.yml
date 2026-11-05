@@ -26,7 +26,48 @@ jobs:
       - run: python -m pytest
         working-directory: backend
       - run: python -B scripts/fixtures.py
+      - run: python -B scripts/frontend_contracts.py --check
       - run: git diff --exit-code
+  browser:
+    runs-on: ubuntu-latest
+    env:
+      ROOTSENTINEL_ORIGIN: http://127.0.0.1:5173
+      ROOTSENTINEL_API_PORT: '8000'
+      ROOTSENTINEL_BROWSER_CHANNEL: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+      - run: python -m pip install -r backend/requirements-browser.lock
+      - run: python -m playwright install --with-deps chromium
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: frontend
+      - name: Real browser and adversarial acceptance
+        shell: bash
+        run: |
+          export ROOTSENTINEL_BROWSER_STATE="$RUNNER_TEMP/rootsentinel-browser-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          (cd backend && python -B -m tests.browser_server) > "$RUNNER_TEMP/rootsentinel-api.log" 2>&1 &
+          backend_pid=$!
+          (cd frontend && npm run dev -- --port 5173 --strictPort) > "$RUNNER_TEMP/rootsentinel-ui.log" 2>&1 &
+          frontend_pid=$!
+          trap 'kill "$backend_pid" "$frontend_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/health > /dev/null && curl -fsS http://127.0.0.1:5173/ > /dev/null; then break; fi
+            sleep 1
+          done
+          python -B scripts/browser_phase04.py
+          python -B scripts/browser_phase04_negative.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sanitized-browser-evidence
+          path: |
+            docs/evidence/phase-04-browser.json
+            docs/evidence/phase-04-negative-browser.json
   postgres:
     runs-on: ubuntu-latest
     services:
@@ -63,6 +104,8 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: frontend
       - run: npm run typecheck
+        working-directory: frontend
+      - run: npm test
         working-directory: frontend
       - run: npm run build
         working-directory: frontend

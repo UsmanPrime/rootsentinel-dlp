@@ -1,0 +1,407 @@
+{
+  "transport": "Chrome / real loopback HTTP / SQLite",
+  "checks": [
+    "invalid login safely rejected",
+    "administrator login",
+    "empty registry",
+    "empty incidents",
+    "asset registration and details",
+    "dialog keyboard trap, Escape and focus restoration",
+    "uneven tree, keyboard leaf selection, valid and tampered backend proofs",
+    "empty input backend fingerprint",
+    "1025-leaf tree renders bounded proof path",
+    "renamed BLOCK and forged release denial with no payload",
+    "real partial-block match",
+    "actual downloaded bytes independently equal scanned bytes",
+    "incident status and persisted analyst note",
+    "authorized sanitized evidence export",
+    "server-side incident status filter",
+    "HMAC verification through real API",
+    "authorized external checkpoint retention",
+    "immutable version history",
+    "retirement confirmation preserves historical versions",
+    "new immutable policy version",
+    "stale release fails closed and UI refreshes",
+    "missing transfer safe error",
+    "guided demonstration uses real registry, proofs and transfer decisions",
+    "mobile navigation keyboard dismissal",
+    "48 route/viewport overflow checks",
+    "same-state screenshot repeatability",
+    "logout clears workspace",
+    "employee routes and direct APIs enforce RBAC and ownership",
+    "revoked session cannot restore workspace",
+    "analyst cannot modify policy"
+  ],
+  "accessibility": [
+    {
+      "page": "login",
+      "violations": [],
+      "incomplete": 0
+    },
+    {
+      "page": "asset details",
+      "violations": [],
+      "incomplete": 0
+    },
+    {
+      "page": "integrity",
+      "violations": [],
+      "incomplete": 2
+    },
+    {
+      "page": "blocked transfer",
+      "violations": [],
+      "incomplete": 0
+    },
+    {
+      "page": "released transfer",
+      "violations": [],
+      "incomplete": 0
+    },
+    {
+      "page": "incident detail",
+      "violations": [],
+      "incomplete": 0
+    },
+    {
+      "page": "audit",
+      "violations": [],
+      "incomplete": 0
+    },
+    {
+      "page": "policies",
+      "violations": [],
+      "incomplete": 0
+    },
+    {
+      "page": "guide",
+      "violations": [],
+      "incomplete": 0
+    },
+    {
+      "page": "overview mobile",
+      "violations": [],
+      "incomplete": 1
+    },
+    {
+      "page": "gateway mobile",
+      "violations": [],
+      "incomplete": 2
+    },
+    {
+      "page": "assets mobile",
+      "violations": [],
+      "incomplete": 1
+    },
+    {
+      "page": "integrity mobile",
+      "violations": [],
+      "incomplete": 2
+    },
+    {
+      "page": "incidents mobile",
+      "violations": [],
+      "incomplete": 1
+    },
+    {
+      "page": "audit mobile",
+      "violations": [],
+      "incomplete": 1
+    },
+    {
+      "page": "policies mobile",
+      "violations": [],
+      "incomplete": 1
+    },
+    {
+      "page": "guide mobile",
+      "violations": [],
+      "incomplete": 0
+    }
+  ],
+  "responsive": [
+    {
+      "route": "overview",
+      "width": 320,
+      "no_page_overflow": true
+    },
+    {
+      "route": "gateway",
+      "width": 320,
+      "no_page_overflow": true
+    },
+    {
+      "route": "assets",
+      "width": 320,
+      "no_page_overflow": true
+    },
+    {
+      "route": "integrity",
+      "width": 320,
+      "no_page_overflow": true
+    },
+    {
+      "route": "incidents",
+      "width": 320,
+      "no_page_overflow": true
+    },
+    {
+      "route": "audit",
+      "width": 320,
+      "no_page_overflow": true
+    },
+    {
+      "route": "policies",
+      "width": 320,
+      "no_page_overflow": true
+    },
+    {
+      "route": "guide",
+      "width": 320,
+      "no_page_overflow": true
+    },
+    {
+      "route": "overview",
+      "width": 375,
+      "no_page_overflow": true
+    },
+    {
+      "route": "gateway",
+      "width": 375,
+      "no_page_overflow": true
+    },
+    {
+      "route": "assets",
+      "width": 375,
+      "no_page_overflow": true
+    },
+    {
+      "route": "integrity",
+      "width": 375,
+      "no_page_overflow": true
+    },
+    {
+      "route": "incidents",
+      "width": 375,
+      "no_page_overflow": true
+    },
+    {
+      "route": "audit",
+      "width": 375,
+      "no_page_overflow": true
+    },
+    {
+      "route": "policies",
+      "width": 375,
+      "no_page_overflow": true
+    },
+    {
+      "route": "guide",
+      "width": 375,
+      "no_page_overflow": true
+    },
+    {
+      "route": "overview",
+      "width": 768,
+      "no_page_overflow": true
+    },
+    {
+      "route": "gateway",
+      "width": 768,
+      "no_page_overflow": true
+    },
+    {
+      "route": "assets",
+      "width": 768,
+      "no_page_overflow": true
+    },
+    {
+      "route": "integrity",
+      "width": 768,
+      "no_page_overflow": true
+    },
+    {
+      "route": "incidents",
+      "width": 768,
+      "no_page_overflow": true
+    },
+    {
+      "route": "audit",
+      "width": 768,
+      "no_page_overflow": true
+    },
+    {
+      "route": "policies",
+      "width": 768,
+      "no_page_overflow": true
+    },
+    {
+      "route": "guide",
+      "width": 768,
+      "no_page_overflow": true
+    },
+    {
+      "route": "overview",
+      "width": 1024,
+      "no_page_overflow": true
+    },
+    {
+      "route": "gateway",
+      "width": 1024,
+      "no_page_overflow": true
+    },
+    {
+      "route": "assets",
+      "width": 1024,
+      "no_page_overflow": true
+    },
+    {
+      "route": "integrity",
+      "width": 1024,
+      "no_page_overflow": true
+    },
+    {
+      "route": "incidents",
+      "width": 1024,
+      "no_page_overflow": true
+    },
+    {
+      "route": "audit",
+      "width": 1024,
+      "no_page_overflow": true
+    },
+    {
+      "route": "policies",
+      "width": 1024,
+      "no_page_overflow": true
+    },
+    {
+      "route": "guide",
+      "width": 1024,
+      "no_page_overflow": true
+    },
+    {
+      "route": "overview",
+      "width": 1440,
+      "no_page_overflow": true
+    },
+    {
+      "route": "gateway",
+      "width": 1440,
+      "no_page_overflow": true
+    },
+    {
+      "route": "assets",
+      "width": 1440,
+      "no_page_overflow": true
+    },
+    {
+      "route": "integrity",
+      "width": 1440,
+      "no_page_overflow": true
+    },
+    {
+      "route": "incidents",
+      "width": 1440,
+      "no_page_overflow": true
+    },
+    {
+      "route": "audit",
+      "width": 1440,
+      "no_page_overflow": true
+    },
+    {
+      "route": "policies",
+      "width": 1440,
+      "no_page_overflow": true
+    },
+    {
+      "route": "guide",
+      "width": 1440,
+      "no_page_overflow": true
+    },
+    {
+      "route": "overview",
+      "width": 1920,
+      "no_page_overflow": true
+    },
+    {
+      "route": "gateway",
+      "width": 1920,
+      "no_page_overflow": true
+    },
+    {
+      "route": "assets",
+      "width": 1920,
+      "no_page_overflow": true
+    },
+    {
+      "route": "integrity",
+      "width": 1920,
+      "no_page_overflow": true
+    },
+    {
+      "route": "incidents",
+      "width": 1920,
+      "no_page_overflow": true
+    },
+    {
+      "route": "audit",
+      "width": 1920,
+      "no_page_overflow": true
+    },
+    {
+      "route": "policies",
+      "width": 1920,
+      "no_page_overflow": true
+    },
+    {
+      "route": "guide",
+      "width": 1920,
+      "no_page_overflow": true
+    }
+  ],
+  "screenshots": [
+    "phase-04/login-desktop.png",
+    "phase-04/asset-details-desktop.png",
+    "phase-04/integrity-desktop.png",
+    "phase-04/blocked-transfer-desktop.png",
+    "phase-04/allowed-release-desktop.png",
+    "phase-04/incident-desktop.png",
+    "phase-04/audit-desktop.png",
+    "phase-04/policies-desktop.png",
+    "phase-04/guide-desktop.png",
+    "phase-04/overview-375.png",
+    "phase-04/gateway-375.png",
+    "phase-04/assets-375.png",
+    "phase-04/integrity-375.png",
+    "phase-04/incidents-375.png",
+    "phase-04/audit-375.png",
+    "phase-04/policies-375.png",
+    "phase-04/guide-375.png",
+    "phase-04/overview-1440.png",
+    "phase-04/gateway-1440.png",
+    "phase-04/assets-1440.png",
+    "phase-04/integrity-1440.png",
+    "phase-04/incidents-1440.png",
+    "phase-04/audit-1440.png",
+    "phase-04/policies-1440.png",
+    "phase-04/guide-1440.png"
+  ],
+  "timings_ms": {
+    "renamed_submit_to_visible": 279.56,
+    "partial_submit_to_visible": 275.06,
+    "benign_submit_to_visible": 223.24,
+    "release_and_browser_hash": 746.53
+  },
+  "browser": "157.0.8103.38",
+  "download": {
+    "bytes": 2720,
+    "sha256": "efecb5a34398f8906907275a3f4f8dc49da495c05281008fc0447bab0d95881d",
+    "byte_equality": true
+  },
+  "same_state_screenshot_sha256": "fb22a419effd2fa86a6f8f41af5a4c1eaee4b04570a58d4726161b9e7491cf1f",
+  "verdict": "PASS",
+  "page_errors": 0,
+  "failed_assets": 0
+}
