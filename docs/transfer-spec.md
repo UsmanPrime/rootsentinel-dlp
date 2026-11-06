@@ -2,7 +2,8 @@
 
 Phase 03 implements a local authenticated download gateway, not operating-system,
 network, USB, clipboard or email interception. An application outside this gateway
-can still transfer files. The staging adapter and public deployment remain future work.
+can still transfer files. The staging agent (Phase 05, [staging-spec](staging-spec.md)) is a separate client of
+this protocol and adds no new release path; public deployment remains future work.
 
 ## Integration and trust boundaries
 

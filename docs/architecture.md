@@ -4,8 +4,9 @@
 
 Phase 03 adds retained private snapshots, single-use verified downloads, incident
 investigation, HMAC audit events and external checkpoints to the existing Phase 02
-registry/detection/policy/authentication services. Staging and public deployment in
-the intended product diagram remain planned. Implemented contracts: [transfers](transfer-spec.md),
+registry/detection/policy/authentication services. Phase 05 adds the local staging agent,
+a separate client of that gateway ([staging-spec](staging-spec.md)); public deployment in
+the intended product diagram remains planned. Implemented contracts: [transfers](transfer-spec.md),
 [audit protocol](audit-spec.md), [local operation](deployment.md).
 See [threat model](threat-model.md), [database](database.md), [detection](detection-spec.md),
 [policy](policy-spec.md), [authentication](authentication.md) and [API](api.md).
@@ -93,7 +94,7 @@ tamper tests assume the attacker does not also possess audit integrity keys.
 | Edits/partial copying | Fixed block matching | Shifts, tiny snippets and transformations can evade |
 | Shared boilerplate | Per-asset evidence and threshold | Policy false positives remain possible |
 | Object-ID guessing | Server-side ownership/role checks | Authorized analysts can inspect evidence |
-| Malicious paths | Generated snapshot IDs; descriptor-relative local access | Host compromise excluded |
+| Malicious paths | Generated snapshot IDs; agent admission is no-follow (descriptor-relative on POSIX, `lstat` plus identity checks on Windows) | Host compromise excluded; Windows keeps a small check-to-use window |
 | Source mutation | Scan frozen snapshot; release same checked buffer | Original producer state may be unstable |
 | Resource exhaustion | 10 MiB local/1 MiB public limits; two processing slots | Distributed DoS outside project guarantee |
 | Proof substitution | Independently trusted expected manifest | Registry authority compromise defeats trust |

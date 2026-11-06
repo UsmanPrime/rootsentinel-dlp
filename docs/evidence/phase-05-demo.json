@@ -1,0 +1,103 @@
+{
+  "script": "scripts/demo_phase05.py",
+  "platform": "win32",
+  "python": "3.13.4",
+  "duration_seconds": 92.4,
+  "checks": [
+    {
+      "check": "gateway is local mode and release is configured",
+      "result": "PASS",
+      "mode": "local"
+    },
+    {
+      "check": "ADMIN registered the synthetic protected corpus (serial, one request per file)",
+      "result": "PASS",
+      "registered": 5
+    },
+    {
+      "check": "benign file delivered byte-identical and staging emptied",
+      "result": "PASS",
+      "sha256": "eb2f687755fbbb6513b0a6aaf6bfd6f75889dee770132a6d8e0540f2a52a439c",
+      "seconds_including_startup": 0.97,
+      "transfer_states": [
+        "STREAM_FINISHED"
+      ]
+    },
+    {
+      "check": "renamed, partial and single-block copies were quarantined and NOTHING reached outbound",
+      "result": "PASS",
+      "quarantined": 3,
+      "transfer_states": [
+        "BLOCKED",
+        "BLOCKED",
+        "BLOCKED"
+      ]
+    },
+    {
+      "check": "the gateway opened one HIGH (exact) and two MEDIUM (threshold) incidents",
+      "result": "PASS",
+      "severities": [
+        "HIGH",
+        "MEDIUM",
+        "MEDIUM"
+      ]
+    },
+    {
+      "check": "HMAC audit chain verifies after the blocks",
+      "result": "PASS",
+      "through_sequence": 23
+    },
+    {
+      "check": "KNOWN MISSES: shifted, CRLF, UTF-16, zipped and sub-threshold copies are delivered (documented limitation of fixed 1 KiB blocks)",
+      "result": "PASS",
+      "delivered": [
+        "crlf.dat",
+        "shifted.dat",
+        "tail.dat",
+        "utf16.dat",
+        "zipped.dat"
+      ]
+    },
+    {
+      "check": "growing file was admitted only after it stopped growing and delivered whole",
+      "result": "PASS",
+      "sha256": "3515e1e4374dc11635decd9a4db2c9b8b943a4cee77b6f75245e46f4c634754f",
+      "transfers": 1
+    },
+    {
+      "check": "hardlink, directory and empty file were rejected, left in place and never submitted",
+      "result": "PASS",
+      "reasons": [
+        "DIRECTORY_NOT_SCANNED",
+        "EMPTY_FILE",
+        "HARDLINK"
+      ]
+    },
+    {
+      "check": "a file ALLOWED a moment earlier was STALE at release, delivered nothing, and the rescan BLOCKED it",
+      "result": "PASS",
+      "transfer_states": [
+        "BLOCKED",
+        "STALE"
+      ]
+    },
+    {
+      "check": "agent was killed after receiving the released bytes: nothing delivered, source kept",
+      "result": "PASS"
+    },
+    {
+      "check": "restart delivered exactly one copy; the spent release stays visible in the audit trail",
+      "result": "PASS",
+      "transfer_states": [
+        "STREAM_FINISHED",
+        "STREAM_FINISHED"
+      ]
+    },
+    {
+      "check": "audit chain still verifies after every scenario",
+      "result": "PASS",
+      "through_sequence": 82
+    }
+  ],
+  "note": "Disposable gateway, generated credentials, synthetic corpus. Hashes, states and counts only."
+}

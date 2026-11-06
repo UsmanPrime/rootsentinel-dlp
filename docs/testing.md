@@ -154,3 +154,21 @@ Playwright environment and Chrome. Credentials are read only from the external
 harness file; screenshots contain synthetic records only. Never point the harness
 at an operator database. The report records actual axe results, keyboard checks,
 48 route/viewport checks, downloaded-byte equality and observed timings.
+
+## Phase 05 staging agent verification
+
+The agent is tested at three levels from the `agent` directory (`python -m pytest -p no:cacheprovider`, ideally with
+`--basetemp` outside OneDrive): unit tests (labels, journal, admission, path rules), fault injection against a stateful
+fake gateway (401, 403, 429, 503, timeouts, dropped connections, tampered and truncated release bodies), and
+real-gateway tests that start the actual FastAPI application in a thread over a real loopback socket with default
+Secure cookies. The real-gateway fixture bypasses only the login throttle and the transfer-call counter, in the test
+process, so a whole suite from one address does not trip them; throttle behavior is covered by the fake gateway and no
+file in `backend/app` is changed. Crash tests run the agent in a subprocess and terminate it with `os._exit` at named
+failpoints, then restart it.
+
+`python -B scripts/demo_phase05.py [--evidence PATH]` starts a disposable gateway (temporary runtime, generated key and
+credentials, synthetic corpus), runs the agent through 13 end-to-end checks, and removes everything. It creates nothing
+under `%LOCALAPPDATA%\RootSentinel`. `python -B scripts/verify_phase05.py` runs the full set of release checks and proves
+that `backend/app`, `backend/migrations`, `docs/openapi.json` and `frontend` are unchanged from the Phase 04 head.
+`python -B scripts/source_corpus.py` checks the synthetic corpus manifest. CI runs the agent job on Linux (Python 3.12 and
+3.13) and a Windows job; results exist only after the candidate branch is pushed. See [staging-spec](staging-spec.md).

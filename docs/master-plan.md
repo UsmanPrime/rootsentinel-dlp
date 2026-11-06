@@ -11,7 +11,8 @@ cryptographic contract and threat assumptions are maintained in adjacent documen
 - Instructor DOCX originals are private, unchanged and outside the repository.
 - Runtime, secrets, payloads and high-volume artifacts belong outside OneDrive.
 - Public mode accepts synthetic fixture IDs only; actual cryptography and matching.
-- Local gateway is mandatory to deliver on native Linux/WSL2 filesystem storage.
+- Local gateway is mandatory to deliver, on native-volume storage outside OneDrive. Phase 05 delivered it as a
+  Windows-primary agent with POSIX behavior proven by Linux CI (see [staging-spec](staging-spec.md)).
 - Fixed 1 KiB chunks first; CDC is an enhancement.
 - Free public hosting is mandatory. No production reliability claim for free tiers.
 - Exactly three students academically; execution assumes one primary operator and
@@ -21,12 +22,12 @@ cryptographic contract and threat assumptions are maintained in adjacent documen
 ## Priority and dependency order
 
 **P0:** SHA-256/block/Merkle core; immutable registry; matching and simple policy;
-controlled browser release; Linux staging adapter; authentication/authorization;
+controlled browser release; local staging agent (Phase 05, Windows-primary, Linux CI); authentication/authorization;
 incident evidence; audit integrity; persistence; basic dashboard/onboarding;
 public deployment; required tests, empirical evaluation, report, manual and slides.
 
 **P1:** CDC, WebSockets, scoped exceptions, richer filters/charts and interactive lab.
-**P2:** native Windows agent, archives/normalization/semantic matching, enterprise
+**P2:** a native Windows service or installer, kernel- or driver-level interception, archives/normalization/semantic matching, enterprise
 identity, external audit anchoring, arbitrary forwarding and broader OS controls.
 
 | Phase | Deliverable | Gate |

@@ -98,19 +98,22 @@ building to keep generated bundles outside OneDrive. Without it, Vite uses ignor
 `frontend/dist`; it will not automatically empty the chosen directory. Dependencies
 remain in ignored `frontend/node_modules`. Git-ignore does not stop OneDrive syncing.
 
-## Linux/WSL2 local gateway boundary (later phase)
+## Staging agent (Phase 05)
 
-Keep source in its approved Windows location. Run the supported adapter inside
-Linux/WSL2 against `$HOME/.local/share/rootsentinel/runtime/{staging,snapshots,delivered}`
-on the distribution's native Linux filesystem. Do not stage on `/mnt/c`, `/mnt/e`,
-OneDrive, a Windows bind mount or a network share. Windows can use the service's
-loopback browser port; the public server does not access local staging directories.
+The staging gateway agent is implemented in `agent/rootsentinel_agent` (standard library only, a separate process
+and a pure client of the REST gateway). Its full specification, provisioning commands, crash-recovery table and
+non-coverage statement are in [staging-spec.md](staging-spec.md). Windows is the primary verified platform; the
+POSIX code paths are exercised by the Linux CI job. Keep the staging, outbound, quarantine and state directories
+outside the source tree and OneDrive, on one native volume; on Linux/WSL2 use the distribution's own filesystem,
+never `/mnt/c`, `/mnt/e`, OneDrive, a Windows bind mount or a network share. The public server does not access
+local staging directories, and the public browser workflow does not depend on the agent.
 
-Admission will be nonrecursive, descriptor-relative, no-follow and regular-file
-only. Producers write then rename to `.ready`. Private snapshots—not mutable
-producer paths—are scanned and delivered. Linux availability was not verified:
-`wsl --list --quiet` returned access denied in this environment. Installing WSL,
-altering its settings or changing sync configuration requires explicit approval.
+Admission is nonrecursive, no-follow and regular-file only. On POSIX it is descriptor-relative (`dir_fd` with
+`O_NOFOLLOW`); Windows has no `dir_fd`, so it uses `lstat`, the reparse-point attribute, link counts and a post-open
+identity comparison. Ordinary files are admitted by stability polling; a producer that writes then renames to
+`.ready` is admitted at once, which is a supported **hint, not a security control**. Private snapshots, not mutable
+producer paths, are what the gateway scans and delivers. Test the agent with `python -m pytest` from `agent`
+(it needs the backend test dependencies for the real-gateway tests) and `python -B scripts/demo_phase05.py`.
 
 ## Troubleshooting and limitations
 
@@ -170,8 +173,8 @@ SQLite. Keep private PostgreSQL URLs in the process environment or an approved l
 secret store. Do not put them in shell history, screenshots, Git or evidence.
 
 Linux/WSL uses the same commands with `python3 -m venv` in native external storage
-and environment exports. Runtime directories must be 0700. This is the local API;
-the native-filesystem staging adapter remains a later implementation.
+and environment exports. Runtime directories must be 0700. This is the local API; the
+staging agent that consumes it is described in [staging-spec.md](staging-spec.md).
 
 Default mode is `public_demo` and refuses operational requests, so accidental startup
 does not expose arbitrary uploads. Do not deploy local mode publicly. Secure cookies

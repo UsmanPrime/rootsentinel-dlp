@@ -39,7 +39,7 @@ deadline, report length and presentation duration are not established here.
 | C03 | T P13 | SHA-256 and block fingerprints | Phase 01 library/tests implemented; matcher later |
 | C04 | T P13 | Merkle integrity/proofs | Phase 01 library/tests/spec implemented |
 | C05 | T P14 | Detect/block unauthorized source transfers | Phase 02–03 gateway tests; pending |
-| C06 | T P15 | Staging-directory gateway scenario | P0-B Linux/WSL2 demo; pending |
+| C06 | T P15 | Staging-directory gateway scenario | Phase 05: Windows-primary agent, Linux CI proof ([staging-spec](staging-spec.md)); hosted CI pending |
 | C07 | O P13 | Established cryptographic libraries | hashlib implemented; hmac planned |
 | C08 | O P14 | Key generation/distribution/storage/revocation | Lifecycle design; implementation pending |
 | C09 | O P15 | Explicit threat model | Architecture document; evolve with implementation |
@@ -87,3 +87,13 @@ status descriptions are the Phase 01 snapshot. Phase 02 advances:
 Three named contributors, topic-sheet confirmation, local staging delivery, public
 deployment, final report/PDF, presentation and submission remain overall-project
 deliverables. Phase 02 does not claim the entire course project is complete.
+
+## Phase 05 traceability update
+
+C06 (the local staging-directory gateway) is addressed by the staging agent in
+[staging-spec.md](staging-spec.md). The Topic Guide text does not require Linux; the earlier "Linux/WSL2 demo"
+wording was this project's own interpretation. Because WSL2 was not a usable runtime on the development machine
+(its only Python was outside the supported range), the agent is **Windows-primary** with POSIX behavior proven by a
+Linux CI job, and a Windows CI job. A WSL2 run is optional and was not performed as evidence. The statement that
+"instantly block" means no delivery before a persisted ALLOW is unchanged. The agent controls only its outbound
+directory; USB, e-mail, clipboard, other applications and direct copying are not covered.

@@ -90,3 +90,32 @@ additional defense, not a replacement for pre-release server byte verification.
 Overview counts and tree views expose only authorized metadata; public mode remains
 closed. The static app requires same-origin routing and appropriate production CSP
 when deployment is addressed in a later phase.
+
+## Phase 05 staging agent boundary
+
+The agent ([staging-spec](staging-spec.md)) is a separate, standard-library client of the controlled gateway. It adds no
+release path and no decision logic; it enforces the gateway's outcome on one directory. Trusted: the operator-owned
+state/quarantine/outbound directories, the gateway and the host OS. Untrusted: everything an employee can put in the
+staging directory (bytes, names, links, timing) and the network path to the gateway.
+
+| Abuse | Implemented control / test | Residual limitation |
+|---|---|---|
+| Copy a protected file under another name | Server-side exact/block match, quarantine, no release (`test_c2_…`) | Names are never trusted either way |
+| Partial copy of protected content | Block threshold applies (`test_c3_…`: two aligned blocks and a single aligned block blocked) | Below-threshold copies are allowed by policy |
+| Shifted, CRLF, UTF-16, compressed or archived copy | Not detected; **asserted as known misses** | Fixed 1 KiB blocks cannot see transformed content; no decoding |
+| Symlink, junction, hardlink, FIFO or device placed in staging | Classified by `lstat`, rejected and never read (`test_c5_…`, `test_fsutil_cli.py`); symlink swapped after observation is not followed (POSIX `O_NOFOLLOW`) | Windows has no `dir_fd`: a small check-to-use window remains against a hostile writer who can replace operator-owned parents |
+| Nested folder to smuggle content | Nonrecursive; nested files are never read and never delivered | They stay in staging unscanned |
+| File still being written | Stability polling; `.ready` hint (`test_c4_…`) | A paused writer looks finished; a partial file may be delivered, then the whole file later |
+| File edited after it was scanned | Delivered bytes are the released, digest-verified bytes; the source is deleted only if unchanged (`test_file_edited_after_…`) | The edit is processed as a new file |
+| Gateway down, throttled, timing out, or answering with errors | Fail closed; same-key replay so no duplicate transfer; bounded backoff (`test_pipeline_faults.py`) | Delivery can be delayed indefinitely |
+| Tampered or truncated release body | Length and SHA-256 must equal the local digest; mismatch is never delivered | The single use is spent and a fresh evaluation is needed |
+| Crash at any step | fsync'd journal, `RELEASING` journaled before the single-use call, recovery table (`test_c7_…`, `test_c9_…`) | A crash between release and write spends the release; it stays visible in the audit trail |
+| Registry or policy changed after ALLOW | Gateway returns STALE; nothing delivered; fresh transfer rescans (`test_c8_…`) | Changes are checked at release, not continuously |
+| Credential disclosure | No password option or environment variable; private file or hidden prompt; allowlisted journal fields; no secrets in logs, reports or errors (`test_no_credentials_…`) | **Windows file ACL is not verified by the agent**; path rules only |
+| Over-privileged agent account | Aborts unless the account role is EMPLOYEE | A compromised agent account can do what that employee can |
+| Producer writes straight to outbound | Operator permission separation | Not enforceable on a one-user Windows machine; shown on Linux CI with a second uid |
+| Other channels (USB, e-mail, cloud sync, clipboard, other apps, direct copy) | **No claim** | Entirely outside the agent |
+
+The journal and quarantine directories hold original file names and, for blocked files, the blocked content. They are
+operator-private and are not secured against a host administrator or the agent's own account. Power loss on Windows is
+handled by re-verifying disk state during recovery, not by directory fsync, which Windows does not offer.

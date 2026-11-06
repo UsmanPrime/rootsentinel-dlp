@@ -2,7 +2,9 @@
 
 No public deployment is implemented. `public_demo` remains fail-closed for all `/api/v1`
 routes. The authenticated local fixture-selection endpoint performs real processing;
-it is not anonymous demo isolation. No arbitrary forwarding URL or staging agent exists.
+it is not anonymous demo isolation. No arbitrary forwarding URL exists. The local staging agent
+is a separate client process documented in [staging-spec.md](staging-spec.md), including its
+provisioning commands; it does not change this service's configuration.
 
 Keep source in the confirmed project folder. Use the existing external Python environment
 and runtime configuration described in [developer guide](developer-guide.md). Keep database,

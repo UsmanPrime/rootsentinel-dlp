@@ -1,0 +1,187 @@
+{
+  "observed_at_utc": "2026-11-06T16:31:22.558416+00:00",
+  "head_at_observation": "97558a5dab2014040e79b1328280def8fa1dd819",
+  "compared_against": "3662f4fc46cc2648609cecf8fd63886fd2b78d2a",
+  "boundary_paths_unchanged": [
+    "backend/app",
+    "backend/migrations",
+    "docs/openapi.json",
+    "frontend"
+  ],
+  "environment": {
+    "os": "Windows",
+    "architecture": "AMD64",
+    "python": "3.13.4",
+    "node": "v24.11.0",
+    "dependencies": {
+      "fastapi": "0.162.0",
+      "sqlalchemy": "2.0.55",
+      "alembic": "1.20.1",
+      "pydantic": "2.14.2",
+      "argon2-cffi": "25.1.0",
+      "pytest": "9.1.1"
+    }
+  },
+  "checks": [
+    {
+      "cwd": "backend",
+      "command": [
+        "python",
+        "-B",
+        "-m",
+        "pytest",
+        "-p",
+        "no:cacheprovider",
+        "-q",
+        "--basetemp",
+        "<external-temp>\\backend-tests"
+      ],
+      "exit_code": 0,
+      "output": ".................................................................................................................. [ 66%]\n..........................................................               [100%]\n============================== warnings summary ===============================\n<user-profile>\\AppData\\Local\\RootSentinel\\venvs\\phase02\\Lib\\site-packages\\fastapi\\testclient.py:1\n  <user-profile>\\AppData\\Local\\RootSentinel\\venvs\\phase02\\Lib\\site-packages\\fastapi\\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n    from starlette.testclient import TestClient as TestClient  # noqa\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n172 passed, 1 warning, 606 subtests passed in 133.12s (0:02:13)"
+    },
+    {
+      "cwd": "agent",
+      "command": [
+        "python",
+        "-B",
+        "-m",
+        "pytest",
+        "-p",
+        "no:cacheprovider",
+        "-q",
+        "--basetemp",
+        "<external-temp>\\agent-tests"
+      ],
+      "exit_code": 0,
+      "output": ".........s....ss........................................................ [ 72%]\n...........................                                              [100%]\n=========================== short test summary info ===========================\nSKIPPED [1] tests\\test_cli_ready_register.py:144: POSIX-only\nSKIPPED [1] tests\\test_fsutil_cli.py:71: POSIX-only\nSKIPPED [1] tests\\test_fsutil_cli.py:97: symlink privilege not held (expected on an unprivileged Windows account)\n96 passed, 3 skipped in 51.22s"
+    },
+    {
+      "cwd": ".",
+      "command": [
+        "python",
+        "-B",
+        "scripts/fixtures.py"
+      ],
+      "exit_code": 0,
+      "output": "Verified 11 synthetic fixture manifests."
+    },
+    {
+      "cwd": ".",
+      "command": [
+        "python",
+        "-B",
+        "scripts/frontend_contracts.py",
+        "--check"
+      ],
+      "exit_code": 0,
+      "output": "Verified 39 generated TypeScript contracts"
+    },
+    {
+      "cwd": ".",
+      "command": [
+        "python",
+        "-B",
+        "scripts/source_corpus.py"
+      ],
+      "exit_code": 0,
+      "output": "Verified 8 synthetic corpus manifests."
+    },
+    {
+      "cwd": ".",
+      "command": [
+        "python",
+        "-B",
+        "scripts/audit_publication.py"
+      ],
+      "exit_code": 0,
+      "output": "candidates=194 findings=0 []"
+    },
+    {
+      "cwd": "frontend",
+      "command": [
+        "npm.cmd",
+        "run",
+        "typecheck"
+      ],
+      "exit_code": 0,
+      "output": "> rootsentinel-ui@0.1.0 typecheck\n> tsc --noEmit"
+    },
+    {
+      "cwd": "frontend",
+      "command": [
+        "npm.cmd",
+        "test"
+      ],
+      "exit_code": 0,
+      "output": "> rootsentinel-ui@0.1.0 test\n> vitest run\n\n\n RUN  v5.1.0 <workspace>/frontend\n\n\n Test Files  4 passed (4)\n      Tests  19 passed (19)\n   Start at  21:30:59\n   Duration  7.84s (environment 73%, import 15%, transform 8%, tests 3%, worker 2%)"
+    },
+    {
+      "cwd": "frontend",
+      "command": [
+        "npm.cmd",
+        "run",
+        "build"
+      ],
+      "exit_code": 0,
+      "output": "\u001b[2m<user-profile>/AppData/Local/Temp/rs-verify-isz_ltye/dist/\u001b[22m\u001b[36massets/Audit-BI27swRB.js        \u001b[39m\u001b[1m\u001b[2m  6.27 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u2502 gzip:  2.40 kB\u001b[22m\n\u001b[2m<user-profile>/AppData/Local/Temp/rs-verify-isz_ltye/dist/\u001b[22m\u001b[36massets/Incidents-CAKCerW9.js    \u001b[39m\u001b[1m\u001b[2m  7.47 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u2502 gzip:  2.78 kB\u001b[22m\n\u001b[2m<user-profile>/AppData/Local/Temp/rs-verify-isz_ltye/dist/\u001b[22m\u001b[36massets/Overview-COGwTGNZ.js     \u001b[39m\u001b[1m\u001b[2m  8.29 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u2502 gzip:  2.82 kB\u001b[22m\n\u001b[2m<user-profile>/AppData/Local/Temp/rs-verify-isz_ltye/dist/\u001b[22m\u001b[36massets/Assets-D4TtdQXh.js       \u001b[39m\u001b[1m\u001b[2m  8.54 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u2502 gzip:  3.21 kB\u001b[22m\n\u001b[2m<user-profile>/AppData/Local/Temp/rs-verify-isz_ltye/dist/\u001b[22m\u001b[36massets/Guide-MCEwLJYC.js        \u001b[39m\u001b[1m\u001b[2m  8.93 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u2502 gzip:  3.48 kB\u001b[22m\n\u001b[2m<user-profile>/AppData/Local/Temp/rs-verify-isz_ltye/dist/\u001b[22m\u001b[36massets/Integrity-DXKl51eh.js    \u001b[39m\u001b[1m\u001b[2m 10.48 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u2502 gzip:  4.05 kB\u001b[22m\n\u001b[2m<user-profile>/AppData/Local/Temp/rs-verify-isz_ltye/dist/\u001b[22m\u001b[36massets/Gateway-CrUbD1J0.js      \u001b[39m\u001b[1m\u001b[2m 13.54 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u2502 gzip:  4.92 kB\u001b[22m\n\u001b[2m<user-profile>/AppData/Local/Temp/rs-verify-isz_ltye/dist/\u001b[22m\u001b[36massets/Legacy-MxTVwHcg.js       \u001b[39m\u001b[1m\u001b[2m 18.23 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u2502 gzip:  5.96 kB\u001b[22m\n\u001b[2m<user-profile>/AppData/Local/Temp/rs-verify-isz_ltye/dist/\u001b[22m\u001b[36massets/index-C9UanNv_.js        \u001b[39m\u001b[1m\u001b[2m290.98 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u2502 gzip: 93.96 kB\u001b[22m\n\u001b[32m\u2713 built in 7.09s\u001b[39m\n\u001b[33mnode_modules/react-router/dist/development/index.mjs (11:0): Module level directives cause errors when bundled, \"use client\" in \"node_modules/react-router/dist/development/index.mjs\" was ignored.\u001b[39m\n\u001b[33mnode_modules/react-router/dist/development/dom-export.mjs (1:0): Module level directives cause errors when bundled, \"use client\" in \"node_modules/react-router/dist/development/dom-export.mjs\" was ignored.\u001b[39m\n\u001b[33mnode_modules/lucide-react/dist/esm/context.mjs (2:0): Module level directives cause errors when bundled, \"use client\" in \"node_modules/lucide-react/dist/esm/context.mjs\" was ignored.\u001b[39m\n\u001b[33mnode_modules/lucide-react/dist/esm/Icon.mjs (2:0): Module level directives cause errors when bundled, \"use client\" in \"node_modules/lucide-react/dist/esm/Icon.mjs\" was ignored.\u001b[39m"
+    },
+    {
+      "cwd": ".",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "output": ""
+    },
+    {
+      "cwd": ".",
+      "command": [
+        "git",
+        "diff",
+        "--exit-code",
+        "3662f4fc46cc2648609cecf8fd63886fd2b78d2a",
+        "--",
+        "backend/app",
+        "backend/migrations",
+        "docs/openapi.json",
+        "frontend"
+      ],
+      "exit_code": 0,
+      "output": ""
+    },
+    {
+      "cwd": ".",
+      "command": [
+        "git",
+        "diff",
+        "--exit-code",
+        "3662f4fc46cc2648609cecf8fd63886fd2b78d2a",
+        "--",
+        "backend/app/crypto",
+        "backend/tests/test_crypto.py",
+        "fixtures/manifest.json"
+      ],
+      "exit_code": 0,
+      "output": ""
+    },
+    {
+      "cwd": ".",
+      "command": [
+        "internal",
+        "no backend/app or frontend/src file references rootsentinel_agent"
+      ],
+      "exit_code": 0,
+      "output": "no references"
+    }
+  ],
+  "local_checks_passed": true,
+  "not_observed": [
+    "hosted Linux CI",
+    "Python 3.12",
+    "PostgreSQL",
+    "hosted Windows CI"
+  ],
+  "publication": "Not performed by this script."
+}
