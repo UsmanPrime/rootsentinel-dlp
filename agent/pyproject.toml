@@ -1,0 +1,16 @@
+[project]
+name = "rootsentinel-agent"
+version = "0.5.0"
+description = "Standard-library staging gateway agent for RootSentinel DLP (a client of the REST gateway)"
+requires-python = ">=3.12,<3.14"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+markers = [
+    "posix: needs POSIX filesystem semantics (symlink, FIFO, modes)",
+    "windows: needs Windows semantics (junction)",
+    "sudo_user: needs passwordless sudo to create a second uid (Linux CI)",
+]

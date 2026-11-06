@@ -110,3 +110,54 @@ jobs:
       - run: npm run build
         working-directory: frontend
       - run: git diff --exit-code
+  agent:
+    # Phase 05: the staging gateway agent (a pure client) against a real, disposable gateway.
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '${{ matrix.python-version }}'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.lock
+      - run: python -m pip install -r backend/requirements-dev.lock
+      - run: python -B scripts/source_corpus.py
+      - name: Agent unit, fault-injection, crash-recovery and real-gateway tests
+        run: python -m pytest -p no:cacheprovider
+        working-directory: agent
+      - name: End-to-end demonstration against a disposable gateway
+        run: python -B scripts/demo_phase05.py --evidence "$RUNNER_TEMP/phase-05-demo-${{ matrix.python-version }}.json"
+      - name: Publication audit (credential patterns, private paths, generated files)
+        run: python -B scripts/audit_publication.py > /dev/null
+      - run: git diff --exit-code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sanitized-agent-evidence-${{ matrix.python-version }}
+          path: ${{ runner.temp }}/phase-05-demo-${{ matrix.python-version }}.json
+  agent-windows:
+    # The agent's primary platform. Windows-specific behavior (junctions, reparse points, lstat identity).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.lock
+      - run: python -m pip install -r backend/requirements-dev.lock
+      - run: python -B scripts/source_corpus.py
+      - name: Agent tests on Windows
+        run: python -m pytest -p no:cacheprovider
+        working-directory: agent
+      - name: End-to-end demonstration on Windows
+        run: python -B scripts/demo_phase05.py --evidence "$env:RUNNER_TEMP/phase-05-demo-windows.json"
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sanitized-agent-evidence-windows
+          path: ${{ runner.temp }}/phase-05-demo-windows.json

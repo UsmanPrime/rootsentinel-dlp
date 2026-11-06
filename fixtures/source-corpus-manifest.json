@@ -1,0 +1,54 @@
+{
+  "construction": "deterministic ASCII source-shaped text; SYNTHETIC, not real intellectual property",
+  "files": {
+    "benign/docs/readme_notes.txt": {
+      "chunk_count": 3,
+      "file_sha256": "5310ae113abb1efee721fd7bb33f0bb2357e924000a7b9f80780a32a2aef9a80",
+      "file_size": 2957,
+      "merkle_root": "e162a2ec2c7099d893c45245b23e95660ef06a69049ec42f685ed187357de236"
+    },
+    "benign/tests/test_helpers.py": {
+      "chunk_count": 3,
+      "file_sha256": "8d8a8836917d6677c864e64b3ce16d8b9514c3180acaa94459122147faf141f4",
+      "file_size": 2147,
+      "merkle_root": "5cd514c6928e0334bb0be7b2b1e0ef63ea3a2bd74151f594be297e4895905c53"
+    },
+    "benign/utils/string_helpers.py": {
+      "chunk_count": 3,
+      "file_sha256": "eb2f687755fbbb6513b0a6aaf6bfd6f75889dee770132a6d8e0540f2a52a439c",
+      "file_size": 2453,
+      "merkle_root": "04b9d4d7889eaea45a3448e1303f96ebb6c11e9cee156da76a4c3e92d3df3ccf"
+    },
+    "protected/auth/token_vault.py": {
+      "chunk_count": 9,
+      "file_sha256": "20a87f891b9582ee97212157b544017f2f0843ae8b648db7d2a2605a066c2960",
+      "file_size": 8502,
+      "merkle_root": "22656f9a3773eb8e5a1cc7e14ebb1be8a38901c07a3e564016ccf5438792135b"
+    },
+    "protected/billing/invoice_engine.py": {
+      "chunk_count": 9,
+      "file_sha256": "631396502b022973ac44ae687f9c25cb2f2e28e493f7cebe8a643d8d530d9f60",
+      "file_size": 9025,
+      "merkle_root": "96a10724b47137782bcdfc930f19c2e52cd11e938b913260c8c97d3fe844dbf8"
+    },
+    "protected/billing/tax_rules.py": {
+      "chunk_count": 7,
+      "file_sha256": "78611e22a6e75d43f41b2cee2a42d20a149378c05bd4a2bb792d7e291b1bad85",
+      "file_size": 6422,
+      "merkle_root": "1b7d7e3f3fbcbd72902f3489291130bc2d5e87cb35e8a063b463f75a02f92e72"
+    },
+    "protected/ml/ranking_core.py": {
+      "chunk_count": 9,
+      "file_sha256": "bad83e5ecb94e7afd426bf623309148ba63dad005bd2f89d0b9a35c4ea7e8989",
+      "file_size": 8438,
+      "merkle_root": "69fd9ef7745304b743c7a3984382365afbe1bae23557f5661b28cf870d374476"
+    },
+    "protected/pricing/margin_model.py": {
+      "chunk_count": 6,
+      "file_sha256": "adf7469cc41f1bf741b1f21835584ff62d6bb771f10dcaa1938273424e56538a",
+      "file_size": 5607,
+      "merkle_root": "5ed309ac7a93764aebd966c6025a90de3a031ccf3252ef7b53ce4a131ae43a87"
+    }
+  },
+  "generator_version": 1
+}
