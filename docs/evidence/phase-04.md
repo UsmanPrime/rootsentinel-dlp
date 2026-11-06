@@ -105,9 +105,52 @@ accessible SVG/DOM with table alternatives.
 
 ## Publication and hosted CI
 
+> Pointer: the short SHAs, run ids and the "no force push or history rewrite" statement in this
+> section are the original, pre-rewrite record. The commit messages were later corrected once;
+> see [History correction, 2026-11-06](#history-correction-2026-11-06) for the new SHAs and CI.
+
 Checkpoint `440455f` was first pushed to a candidate branch. Hosted run `42061316687` completed
 **success** on all five jobs: backend (3.12), backend (3.13), real-browser acceptance, frontend
 (typecheck, unit tests, build) and PostgreSQL. The same commit was then published to `main` as a
 normal fast-forward (`46bbe4f..440455f`); no force push or history rewrite. The first candidate push
 was rejected once by GitHub with a transient server-side error and succeeded unchanged on retry.
 This documentation-only follow-up commit records that result.
+
+## History correction, 2026-11-06
+
+At the repository owner's explicit one-time request, the commit messages of the two Phase 04
+commits were rewritten to remove a `Co-Authored-By` trailer that named the AI coding assistant.
+Only the messages changed. File contents are identical: each rewritten commit has the same tree
+hash as the original, `git diff` between each old and new commit is empty, author and committer
+names, emails and dates are unchanged, and no code, test or document content changed. The
+evidence text above is left as originally written; the short SHAs it cites are the pre-rewrite
+values.
+
+| Item | Before | After |
+|---|---|---|
+| Phase 04 feature commit | `440455f18bb58b49617149746a6833307366149b` | `157d8be40de2829d65eb44209e681728bdb457e9` |
+| Phase 04 evidence commit (`main` tip) | `d24417a394337a6446c4b68b6cecd5805a3d5177` | `2991731ca7933e3964633d81557e8829f8236ecb` |
+| `phase-04` annotated tag object | `6fcd878eca313b032abc7ac8c2fc0ca4b8c072f9` | `dc783a16c89acdc199c6a5d6280e1026e609412f` (peels to `2991731`) |
+
+Tree hashes, identical before and after: feature commit `a3870c47597632b0f067c8a3e64e038e93959edf`;
+evidence commit `2e4d521cdb3f96158ee68c39aceee7afc0e82680`.
+
+Procedure: `main` was force pushed once, with an exact lease on the old tip
+(`--force-with-lease=main:d24417a394337a6446c4b68b6cecd5805a3d5177`), and the `phase-04` tag was
+moved once with an exact lease on the old tag object. The Phase 01–03 commits, the `phase-01`,
+`phase-02` and `phase-03` tags and the `phase03-gateway-verification` branch were not touched.
+A bundle of all refs was taken locally before the rewrite and is not published. A fresh clone of
+the remote showed eight linear commits and no merge commits.
+
+CI evidence:
+
+- Hosted runs `42061316687` (candidate branch), `42062807008` and `42062833439` (`main`) ran on
+  the pre-rewrite SHAs. They are retained as evidence for identical content (same trees), not as
+  CI results for the new SHAs. Their pages still display the old SHAs.
+- Run `42244427246` (push to `main`, head `2991731ca7933e3964633d81557e8829f8236ecb`) completed
+  **success** on all five jobs: backend (3.12), backend (3.13), browser, frontend and PostgreSQL.
+- Run `42244473854` (push of the moved `phase-04` tag, same head SHA) also completed **success**
+  on all five jobs.
+
+Limits: clones made before the rewrite hold the old SHAs, GitHub may keep resolving the old
+SHAs for a time, and its contributors list may take hours to refresh.
