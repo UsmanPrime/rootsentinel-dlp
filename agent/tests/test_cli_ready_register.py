@@ -164,8 +164,12 @@ def test_a_second_uid_can_fill_staging_but_cannot_write_outbound_while_the_agent
         assert write(dirs["staging"] / "from-employee.txt").returncode == 0
         denied = write(dirs["outbound"] / "bypass.txt")
         assert denied.returncode != 0 and b"Permission" in denied.stderr and not (dirs["outbound"] / "bypass.txt").exists()
-        old = __import__("time").time() - 5
-        os.utime(dirs["staging"] / "from-employee.txt", (old, old))
+        # The file belongs to the second user, so only that user (or root) may change its timestamps.
+        aged = subprocess.run(["sudo", "-n", "-u", user, "touch", "-d", "10 seconds ago", str(dirs["staging"] / "from-employee.txt")],
+                              capture_output=True)
+        assert aged.returncode == 0, aged.stderr
+        assert __import__("time").time() - (dirs["staging"] / "from-employee.txt").stat().st_mtime > 5
+        assert (dirs["staging"] / "from-employee.txt").stat().st_uid != os.getuid()     # still owned by the producer
         assert run(make_agent(dirs, gateway.client())) == 0
         assert (dirs["outbound"] / "from-employee.txt").read_bytes() == b"payload"
         assert (dirs["outbound"] / "from-employee.txt").stat().st_uid == os.getuid()   # delivered by the agent, not by the producer

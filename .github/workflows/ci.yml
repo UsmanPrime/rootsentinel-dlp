@@ -114,6 +114,7 @@ jobs:
     # Phase 05: the staging gateway agent (a pure client) against a real, disposable gateway.
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ['3.12', '3.13']
     steps:
