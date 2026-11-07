@@ -171,6 +171,10 @@ function Login() {
           <p className="muted">
             Sign in with your administrator-provisioned account.
           </p>
+          <p className="muted">
+            Use synthetic files only. Do not upload confidential or personal
+            data to this demonstration.
+          </p>
           {session.expired && (
             <Notice>Your session ended. Sign in again to continue.</Notice>
           )}
@@ -374,7 +378,7 @@ function Shell() {
         </main>
         <footer className="app-footer">
           <span>RootSentinel / Evidence-driven transfer control</span>
-          <span>Gateway scope only · Synthetic demonstrations</span>
+          <span>Gateway scope only · Use synthetic files only; never upload confidential data</span>
         </footer>
       </div>
       <Dialog

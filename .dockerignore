@@ -1,0 +1,26 @@
+# Keep the build context small and free of local state, secrets and tests.
+.git
+.github
+.playwright-mcp
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+backend/tests
+agent
+docs
+fixtures
+scripts
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.sqlite*
+*.db
+audit-keys.json
+accounts.json
+checkpoint-*.json
+ROOTSENTINEL_CLAUDE_HANDOFF.md
+CLAUDE.md

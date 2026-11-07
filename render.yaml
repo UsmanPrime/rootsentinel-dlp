@@ -1,0 +1,29 @@
+# Render Blueprint for the hosted presenter demo (Phase 06A). It contains NO secret values.
+# Secret FILES (audit-keys.json, accounts.json) cannot be declared here: add them in the dashboard
+# (Environment > Secret Files). See docs/deployment.md for the exact checklist.
+# No healthCheckPath on purpose: the /health check needs ROOTSENTINEL_ORIGIN to equal the service's
+# real URL, which is only known after the service exists. Enable it afterwards (checklist step).
+services:
+  - type: web
+    name: rootsentinel-dlp            # choose a distinctive name: it becomes https://<name>.onrender.com
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    autoDeploy: false                 # deploys are a deliberate click
+    envVars:
+      - key: ROOTSENTINEL_MODE
+        value: local
+      - key: ROOTSENTINEL_ORIGIN
+        sync: false                   # exact public origin, https, no trailing slash
+      - key: ROOTSENTINEL_DATABASE_URL
+        sync: false                   # postgresql+psycopg://... from Neon (never paste it anywhere else)
+      - key: ROOTSENTINEL_TRUSTED_PROXY_HOPS
+        value: "0"                    # raise only after measuring (docs/deployment.md)
+      - key: ROOTSENTINEL_SESSION_SECONDS
+        value: "3600"
+      - key: ROOTSENTINEL_RETENTION_SECONDS
+        value: "900"
+      - key: ROOTSENTINEL_MAX_UPLOAD_BYTES
+        value: "1048576"              # 1 MiB for the hosted demo (the backend default is 10 MiB)
+      - key: ROOTSENTINEL_TRANSFER_RATE_PER_MINUTE
+        value: "10"

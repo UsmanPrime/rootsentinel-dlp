@@ -162,3 +162,66 @@ jobs:
         with:
           name: sanitized-agent-evidence-windows
           path: ${{ runner.temp }}/phase-05-demo-windows.json
+  container:
+    # Phase 06A: build the hosted image and smoke-test it with a disposable SQLite database and
+    # throwaway generated secrets. No deploy tokens exist in CI; deploying is a manual platform action.
+    runs-on: ubuntu-latest
+    env:
+      ROOTSENTINEL_CI_ORIGIN: https://rootsentinel-ci.example
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements.lock
+      - run: python -m pip install -r backend/requirements.lock
+      - name: Generate throwaway secrets outside the repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          secrets_dir="$RUNNER_TEMP/rs-container-secrets"
+          mkdir -m 700 "$secrets_dir"
+          (cd backend && python -B -m app.audit_keys init "$secrets_dir/audit-keys.json")
+          python -c "import secrets; print(secrets.token_urlsafe(24))" > "$secrets_dir/smoke-password"
+          python -B scripts/make_account_hashes.py --out "$secrets_dir/accounts.json" --account ci-analyst:ANALYST --password-file "$secrets_dir/smoke-password"
+      - name: Build the hosted image
+        run: docker build -t rootsentinel-hosted:ci .
+      - name: The image refuses to start without an https origin
+        shell: bash
+        run: |
+          set +e
+          output="$(docker run --rm rootsentinel-hosted:ci 2>&1)"
+          status=$?
+          set -e
+          echo "$output"
+          test "$status" -ne 0
+          echo "$output" | grep -q "ROOTSENTINEL_ORIGIN"
+      - name: Start the container
+        shell: bash
+        run: |
+          docker run -d --name rootsentinel -p 127.0.0.1:8000:10000 \
+            -e ROOTSENTINEL_ORIGIN="$ROOTSENTINEL_CI_ORIGIN" \
+            -v "$RUNNER_TEMP/rs-container-secrets:/etc/secrets:ro" \
+            rootsentinel-hosted:ci
+      - name: Smoke test (warm-up, hosted headers, login, ALLOW and BLOCK, single use, audit sequence)
+        run: python -B scripts/smoke_public.py --base-url http://127.0.0.1:8000 --origin "$ROOTSENTINEL_CI_ORIGIN" --username ci-analyst --password-file "$RUNNER_TEMP/rs-container-secrets/smoke-password" --warmup-seconds 120
+      - name: The server process runs without privileges
+        shell: bash
+        run: |
+          uid="$(docker exec rootsentinel awk '/^Uid:/ {print $2}' /proc/1/status)"
+          echo "server uid: $uid"
+          test "$uid" = "10001"
+      - name: Restart: bootstrap is idempotent and the data survives
+        shell: bash
+        run: |
+          docker restart rootsentinel
+          python -B scripts/smoke_public.py --base-url http://127.0.0.1:8000 --origin "$ROOTSENTINEL_CI_ORIGIN" --username ci-analyst --password-file "$RUNNER_TEMP/rs-container-secrets/smoke-password" --warmup-seconds 120
+          docker logs rootsentinel 2>&1 | grep -c "assets: seeded=0 existing=1" | grep -qx 1
+      - name: Container logs
+        if: always()
+        run: docker logs rootsentinel || true
+      - name: Remove the container
+        if: always()
+        run: docker rm -f rootsentinel || true

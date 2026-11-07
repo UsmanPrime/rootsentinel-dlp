@@ -1,6 +1,7 @@
 """Local authenticated registry, detection and controlled transfer API."""
 import asyncio
 from contextlib import asynccontextmanager, suppress
+import ipaddress
 from typing import Annotated
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -34,13 +35,39 @@ from .settings import Settings
 from .transfers import Gateway
 from .gateway_api import install_routes
 from .presentation import install_presentation
+from .static_site import install_static
 
 COOKIE = "rs_session"
 RAW_BODY = {"requestBody": {"required": True, "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}}
 
 
+# Report-only until the deployed pages have been observed. The only inline styles are four React style props.
+CSP_REPORT_ONLY = ("default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; "
+                   "font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+MANAGED_HEADERS = {b"cache-control", b"x-content-type-options", b"referrer-policy", b"x-frame-options",
+                   b"strict-transport-security", b"content-security-policy-report-only"}
+
+
 def error_response(code, status):
     return JSONResponse({"error": {"code": code, "outcome": "INDETERMINATE", "release_authorized": False}}, status_code=status)
+
+
+def forwarded_client(headers, hops):
+    """The address N entries from the right of X-Forwarded-For, or None to keep the socket peer.
+
+    Only meaningful when exactly ``hops`` trusted proxies each append their peer's address, so the
+    entry that many places from the right was written by the outermost trusted proxy and cannot be
+    chosen by the client. Too few entries or an unparsable value fails closed to the socket peer.
+    """
+    if hops <= 0:
+        return None
+    entries = [part.strip() for k, v in headers if k == b"x-forwarded-for" for part in v.decode("latin1").split(",")]
+    if len(entries) < hops:
+        return None
+    try:
+        return str(ipaddress.ip_address(entries[-hops]))
+    except ValueError:
+        return None
 
 
 class RequestGuard:
@@ -53,7 +80,10 @@ class RequestGuard:
             return await self.app(scope, receive, send)
         headers = dict(scope["headers"])
         host = headers.get(b"host", b"").decode("latin1")
-        permitted = {urlsplit(self.settings.origin).netloc, "127.0.0.1:8000", "localhost:8000"}
+        permitted = {urlsplit(self.settings.origin).netloc, "127.0.0.1:8000", "localhost:8000", *self.settings.extra_hosts}
+        forwarded = forwarded_client(scope["headers"], self.settings.trusted_proxy_hops)
+        if forwarded is not None:
+            scope = {**scope, "client": (forwarded, 0)}
         failure = None
         if host not in permitted:
             failure = ("HOST_REJECTED", 400)
@@ -65,7 +95,7 @@ class RequestGuard:
         received = 0
         started = False
         content_type = headers.get(b"content-type", b"").split(b";", 1)[0]
-        limit = 10485760 if content_type == b"application/octet-stream" else 32768
+        limit = self.settings.max_upload_bytes if content_type == b"application/octet-stream" else 32768
 
         async def bounded_receive():
             nonlocal received
@@ -80,9 +110,12 @@ class RequestGuard:
             nonlocal started
             if message["type"] == "http.response.start":
                 started = True
-                message["headers"] = [(k, v) for k, v in message.get("headers", []) if k.lower() not in {b"cache-control", b"x-content-type-options", b"referrer-policy", b"x-frame-options"}] + [
-                    (b"cache-control", b"no-store"), (b"x-content-type-options", b"nosniff"),
-                    (b"referrer-policy", b"no-referrer"), (b"x-frame-options", b"DENY")]
+                added = [(b"cache-control", b"no-store"), (b"x-content-type-options", b"nosniff"),
+                         (b"referrer-policy", b"no-referrer"), (b"x-frame-options", b"DENY")]
+                if self.settings.hosted:
+                    added += [(b"strict-transport-security", b"max-age=31536000"),
+                              (b"content-security-policy-report-only", CSP_REPORT_ONLY.encode("ascii"))]
+                message["headers"] = [(k, v) for k, v in message.get("headers", []) if k.lower() not in MANAGED_HEADERS] + added
             await send(message)
         if failure:
             return await error_response(*failure)(scope, receive, secured_send)
@@ -129,7 +162,9 @@ def create_app(settings: Settings | None = None):
                 await worker
             db.engine.dispose()
 
-    app = FastAPI(title="RootSentinel DLP", version="0.3.0", lifespan=lifespan,
+    # Interactive API documentation is a local-development aid; hosted or public_demo deployments do not publish it.
+    docs = {} if settings.mode == "local" and not settings.hosted else {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    app = FastAPI(title="RootSentinel DLP", version="0.3.0", lifespan=lifespan, **docs,
         description="Local authenticated detection and single-use verified transfer gateway.",
         responses={code: {"model": ErrorView} for code in (400, 401, 403, 404, 409, 413, 415, 422, 429, 503)})
     app.state.db, app.state.auth, app.state.settings = db, auth, settings
@@ -214,7 +249,7 @@ def create_app(settings: Settings | None = None):
             raise DomainError("SCAN_CAPACITY", 503)
         try:
             try:
-                snapshot = await asyncio.wait_for(receive_snapshot(request.stream(), settings.paths.snapshots), timeout=60)
+                snapshot = await asyncio.wait_for(receive_snapshot(request.stream(), settings.paths.snapshots, settings.max_upload_bytes), timeout=60)
             except (ClientDisconnect, asyncio.TimeoutError):
                 raise DomainError("INCOMPLETE_UPLOAD", 400)
             length = request.headers.get("content-length")
@@ -335,4 +370,6 @@ def create_app(settings: Settings | None = None):
 
     install_routes(app, principal, intake)
     install_presentation(app, principal)
+    if settings.frontend_dir is not None:
+        install_static(app, settings.frontend_dir, lambda: error_response("NOT_FOUND", 404))   # last: it is a catch-all
     return app

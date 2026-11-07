@@ -31,13 +31,14 @@ class FixtureChoice(Schema):
 
 class TransferLimiter:
     """Single-worker fixed windows; both global and per-account bounds."""
-    def __init__(self, clock=time.monotonic):
+    def __init__(self, clock=time.monotonic, per_account=30, globally=120):
         self.clock, self.lock, self.buckets = clock, Lock(), OrderedDict()
+        self.per_account, self.globally = per_account, globally
 
     def check(self, actor_id):
         with self.lock:
             current = self.clock()
-            for key, maximum in (("global", 120), (actor_id, 30)):
+            for key, maximum in (("global", self.globally), (actor_id, self.per_account)):
                 start, count = self.buckets.get(key, (current, 0))
                 if current - start >= 60:
                     start, count = current, 0
@@ -93,7 +94,7 @@ class VerifiedResponse(Response):
 
 def install_routes(app, principal, intake):
     gateway, db = app.state.gateway, app.state.db
-    limiter = TransferLimiter()
+    limiter = TransferLimiter(per_account=app.state.settings.transfer_rate_per_minute)
     Actor = Annotated[Principal, Depends(principal)]
     Limit = Annotated[int, Query(ge=1, le=100)]
     Offset = Annotated[int, Query(ge=0, le=100000)]

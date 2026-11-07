@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import re
 from urllib.parse import urlsplit
 
 from sqlalchemy.engine import make_url
@@ -9,6 +10,17 @@ from sqlalchemy.engine import make_url
 from .config import StoragePaths, validate_external_path
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
+HOST_PATTERN = re.compile(r"[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::[0-9]{1,5})?")
+
+
+def _integer(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be an integer") from None
 
 
 @dataclass(frozen=True)
@@ -22,6 +34,17 @@ class Settings:
     audit_key_file: Path | None = None
     checkpoint_root: Path | None = None
     retention_seconds: int = 900
+    # Hosted-deployment knobs (Phase 06A). Defaults reproduce the earlier local behavior exactly.
+    extra_hosts: tuple[str, ...] = ()
+    trusted_proxy_hops: int = 0
+    frontend_dir: Path | None = None
+    max_upload_bytes: int = 10485760
+    transfer_rate_per_minute: int = 30
+
+    @property
+    def hosted(self) -> bool:
+        """An https origin means a TLS-terminating host fronts the app; loopback development uses http."""
+        return urlsplit(self.origin).scheme == "https"
 
     def __post_init__(self):
         if self.mode not in {"local", "public_demo"}:
@@ -37,6 +60,16 @@ class Settings:
         validate_external_path(self.paths.artifacts, SOURCE_ROOT)
         if not 1 <= self.retention_seconds <= 900:
             raise ValueError("Retention must be 1 through 900 seconds")
+        if not 0 <= self.trusted_proxy_hops <= 5:
+            raise ValueError("Trusted proxy hops must be 0 through 5")
+        if not 1024 <= self.max_upload_bytes <= 10485760:
+            raise ValueError("Upload cap must be 1024 through 10485760 bytes")
+        if not 1 <= self.transfer_rate_per_minute <= 120:
+            raise ValueError("Transfer rate must be 1 through 120 per minute")
+        if any(HOST_PATTERN.fullmatch(host) is None for host in self.extra_hosts):
+            raise ValueError("Extra hosts must be exact lowercase host names (optional port); wildcards are not allowed")
+        if self.frontend_dir is not None and not self.frontend_dir.is_absolute():
+            raise ValueError("The frontend directory must be absolute")
         for path in (self.audit_key_file, self.checkpoint_root):
             if path is not None:
                 resolved = validate_external_path(path, SOURCE_ROOT)
@@ -60,8 +93,15 @@ class Settings:
             os.environ.get("ROOTSENTINEL_MODE", "public_demo"),
             os.environ.get("ROOTSENTINEL_ORIGIN", "http://127.0.0.1:5173"),
             os.environ.get("ROOTSENTINEL_SECURE_COOKIES", "true") != "false",
+            session_seconds=_integer("ROOTSENTINEL_SESSION_SECONDS", 3600),
             audit_key_file=Path(os.environ["ROOTSENTINEL_AUDIT_KEY_FILE"]) if os.environ.get("ROOTSENTINEL_AUDIT_KEY_FILE") else None,
             checkpoint_root=Path(os.environ["ROOTSENTINEL_CHECKPOINT_ROOT"]) if os.environ.get("ROOTSENTINEL_CHECKPOINT_ROOT") else None,
+            retention_seconds=_integer("ROOTSENTINEL_RETENTION_SECONDS", 900),
+            extra_hosts=tuple(h.strip() for h in os.environ.get("ROOTSENTINEL_EXTRA_HOSTS", "").split(",") if h.strip()),
+            trusted_proxy_hops=_integer("ROOTSENTINEL_TRUSTED_PROXY_HOPS", 0),
+            frontend_dir=Path(os.environ["ROOTSENTINEL_FRONTEND_DIR"]) if os.environ.get("ROOTSENTINEL_FRONTEND_DIR") else None,
+            max_upload_bytes=_integer("ROOTSENTINEL_MAX_UPLOAD_BYTES", 10485760),
+            transfer_rate_per_minute=_integer("ROOTSENTINEL_TRANSFER_RATE_PER_MINUTE", 30),
         )
 
     def prepare_storage(self):
