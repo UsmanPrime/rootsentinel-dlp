@@ -213,7 +213,7 @@ jobs:
           uid="$(docker exec rootsentinel awk '/^Uid:/ {print $2}' /proc/1/status)"
           echo "server uid: $uid"
           test "$uid" = "10001"
-      - name: Restart: bootstrap is idempotent and the data survives
+      - name: Restart and verify that bootstrap is idempotent and the data survives
         shell: bash
         run: |
           docker restart rootsentinel
