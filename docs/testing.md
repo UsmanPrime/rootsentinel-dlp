@@ -172,3 +172,18 @@ under `%LOCALAPPDATA%\RootSentinel`. `python -B scripts/verify_phase05.py` runs 
 that `backend/app`, `backend/migrations`, `docs/openapi.json` and `frontend` are unchanged from the Phase 04 head.
 `python -B scripts/source_corpus.py` checks the synthetic corpus manifest. CI runs the agent job on Linux (Python 3.12 and
 3.13) and a Windows job; the first candidate run (42264658907) failed on a defect in a Linux-only test and the rerun (42268818788) passed all eight jobs (see the evidence). See [staging-spec](staging-spec.md).
+
+
+## Phase 06A hosted-configuration verification
+
+`backend/tests/test_hosted.py` runs against the real application with an https origin, a synthetic built frontend and generated
+credentials: settings validation and unchanged defaults, static serving and traversal attempts, security headers, the proof that
+every anonymous route is denied (and that no unexpected route appears), `public_demo` still closed, `forwarded_client` (hop count,
+spoofing, fail-closed fallbacks) plus its effect on the login limit, the upload, session, retention and rate overrides, `bootstrap`
+(idempotence, hash-only input, rotation, disable, invalid and unsafe files, no secret in output, audit chain and checkpoint), and the
+four gateway invariants. A mutation check (disabling the hop logic) made the spoofing test fail, as it should.
+
+`python -B scripts/smoke_public.py` is the post-deploy smoke test; the CI `container` job builds the image and runs it against a
+disposable SQLite and generated secrets, checks the unprivileged user, and restarts the container to prove bootstrap is idempotent.
+The container job and every deployed measurement (cold start, memory, login time, hop count) are **pending hosted CI or not yet
+measured**; Docker is not available on the development machine.

@@ -119,3 +119,30 @@ staging directory (bytes, names, links, timing) and the network path to the gate
 The journal and quarantine directories hold original file names and, for blocked files, the blocked content. They are
 operator-private and are not secured against a host administrator or the agent's own account. Power loss on Windows is
 handled by re-verifying disk state during recovery, not by directory fsync, which Windows does not offer.
+
+
+## Hosted presenter-demo surface (Phase 06A)
+
+Scope: one free-tier container (the gateway, the built frontend and `bootstrap`) in front of a free PostgreSQL service, reached over
+https through the host's reverse proxy. **No anonymous or visitor access exists**; every account is created by the operator.
+Nothing here has been deployed or measured yet. The staging agent stays local and independent of this surface.
+
+| Threat | Control (test) | Residual risk |
+|---|---|---|
+| Unauthenticated use of the API | Every `/api/v1` route except sign-in answers 401; a test iterates all routes and fails if an unexpected route appears (`test_every_anonymous_api_route_is_denied_...`) | Sign-in itself is open to guessing within the existing limits (5 per user, 15 per address and 30 overall per minute) |
+| `public_demo` weakened | Unchanged: every API route stays denied (`test_public_demo_still_denies_every_api_route`) | None added |
+| Forged `Host` or `Origin` | Exact Host allow-list (origin plus explicit extra hosts, no wildcards) and exact Origin on every non-GET, also for static files (`test_host_and_origin_checks_...`) | A misconfigured origin makes the site return 400 until fixed |
+| Spoofed `X-Forwarded-For` evades the per-address login limit | Hop-count trust: the entry N from the right is used, otherwise the socket peer; the spoof test shows a constant limit (`test_login_throttle_keys_on_the_trusted_forwarded_address_...`) | The right N is unknown until measured on the host. A wrong N shares or splits buckets. A classroom NAT shares one bucket. |
+| Path traversal or secret exposure through static files | Only GET and HEAD; the resolved path must stay inside the frontend directory; dot-files and backslashes refused; unknown file-like paths are 404, not HTML (`test_static_serving_cannot_leave_...`) | A symlink test is skipped on Windows (runs on Linux CI) |
+| API documentation reveals the surface | Interactive docs and `/openapi.json` are off for hosted and `public_demo`; the schema is public in the repository anyway | None meaningful |
+| Transport and browser hardening | HSTS (no preload, no subdomains); `X-Frame-Options: DENY`; `no-store`; nosniff | The CSP is **report-only**, not enforced; four React style attributes need `style-src-attr 'unsafe-inline'` |
+| Secrets in the repository, image or logs | Key file and account hashes arrive as platform secret files; hashes only, never passwords; `bootstrap` and the entrypoint print counts and generic errors; access logging is off; CI uses throwaway secrets (`test_bootstrap_*`, publication audit) | The platform operator and anyone with the dashboard can read the key and the database URL; host compromise is out of scope |
+| Privilege on the host | The server runs as uid 10001; root is used only to copy two files (the CI `container` job checks the server uid; pending hosted CI) | A container escape or a malicious dependency is not addressed |
+| Audit stream filled or fail-closed | Hosted per-account transfer limit (10 per minute in `render.yaml`; the code default is 30), 1 MiB upload cap, the smoke test prints the sequence number; the audit still fails closed at 20000 events | Only authenticated accounts can add events, but a leaked class password can still exhaust the stream; recovery means a new database |
+| Free-tier restarts and sleep | Restart recovery marks interrupted transfers `ERROR` or `DELIVERY_UNKNOWN`; a vanished snapshot makes release fail closed | In-flight demonstrations can be lost; retained snapshots and checkpoints are not durable |
+| Audit rewrite after a restart | The HMAC chain and the key held only by the app host (see "Audit integrity on a hosted free tier") | **Tail truncation and database rollback are undetectable after a restart**: checkpoints live on the ephemeral disk. Not forensic evidence. |
+| Uploaded content | Authenticated accounts only; 1 MiB by default; never executed or decompressed; removed on BLOCK, release or expiry; the interface asks for synthetic data | The reminder is not a control: a user can still upload real data, and chunk hashes and the label persist in the database |
+| Supply chain | Locked, pinned Python and Node dependencies; base images pinned by tag | No hashes or image digests; the lock file states it is not an attestation |
+
+Gateway invariants are re-asserted in the hosted configuration (`test_hosted_*`): a scan ALLOW is not a release credential, release
+is single use and owner-only, a BLOCK never delivers, and a broken audit chain stops the release.

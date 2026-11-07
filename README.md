@@ -150,3 +150,12 @@ are not covered, shifted, re-encoded or compressed copies are known misses of fi
 and on Windows the permission separation between staging and outbound is an operator step. See the
 [specification](docs/staging-spec.md) (including exact provisioning commands), the
 [threat model](docs/threat-model.md) and the [evidence](docs/evidence/phase-05.md).
+
+## Phase 06A — hosted presenter demo (prepared, not deployed)
+
+A `Dockerfile`, `render.yaml`, an unprivileged entrypoint, an idempotent `bootstrap` (accounts from a file of password hashes, one
+synthetic protected asset) and `scripts/smoke_public.py` prepare a free-tier Render plus Neon deployment of the gateway with the
+frontend served from the same origin. Access is by operator-created accounts only; there is no anonymous or visitor mode, and
+`public_demo` still denies every API route. Nothing has been deployed and there are no deployed measurements yet. On a free tier
+the audit chain is tamper evident within one container lifetime only: checkpoints are lost on restart. See
+[deployment](docs/deployment.md) (including what you must do yourself) and the [evidence](docs/evidence/phase-06a.md).

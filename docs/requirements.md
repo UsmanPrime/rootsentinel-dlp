@@ -50,7 +50,7 @@ deadline, report length and presentation duration are not established here.
 | C14 | O P23 | Onboarding/tooltips | Guided workflow pending |
 | C15 | O P24 | API, secure sessions, persistence | Later phases |
 | C16 | O P26 | GitHub, clean history, README | Correct local origin/main; owner verified empty remote; checkpoint evidence in Phase 01 report; publication pending |
-| C17 | O P27 | Free public hosting | Render/Neon planned; not provisioned |
+| C17 | O P27 | Free public hosting | Phase 06A: container, bootstrap, hosted configuration and smoke test implemented ([deployment](deployment.md)); **not deployed, no deployed measurements** |
 | C18 | O P28 | REST/WebSocket integration | REST P0, WebSocket P1; not implemented |
 | C19 | O P30 | Attack surface mapping | Threat model baseline |
 | C20 | O P31 | Empirical attacks and mitigations | Proof corruption tested; operational attacks pending |
