@@ -39,7 +39,7 @@ deadline, report length and presentation duration are not established here.
 | C03 | T P13 | SHA-256 and block fingerprints | Phase 01 library/tests implemented; matcher later |
 | C04 | T P13 | Merkle integrity/proofs | Phase 01 library/tests/spec implemented |
 | C05 | T P14 | Detect/block unauthorized source transfers | Phase 02–03 gateway tests; pending |
-| C06 | T P15 | Staging-directory gateway scenario | Phase 05: Windows-primary agent, Linux CI proof ([staging-spec](staging-spec.md)); hosted CI pending |
+| C06 | T P15 | Staging-directory gateway scenario | Phase 05: Windows-primary agent, Linux CI proof ([staging-spec](staging-spec.md)); hosted CI passed, run 42268818788 ([evidence](evidence/phase-05.md)) |
 | C07 | O P13 | Established cryptographic libraries | hashlib implemented; hmac planned |
 | C08 | O P14 | Key generation/distribution/storage/revocation | Lifecycle design; implementation pending |
 | C09 | O P15 | Explicit threat model | Architecture document; evolve with implementation |

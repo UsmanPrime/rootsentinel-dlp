@@ -171,4 +171,4 @@ credentials, synthetic corpus), runs the agent through 13 end-to-end checks, and
 under `%LOCALAPPDATA%\RootSentinel`. `python -B scripts/verify_phase05.py` runs the full set of release checks and proves
 that `backend/app`, `backend/migrations`, `docs/openapi.json` and `frontend` are unchanged from the Phase 04 head.
 `python -B scripts/source_corpus.py` checks the synthetic corpus manifest. CI runs the agent job on Linux (Python 3.12 and
-3.13) and a Windows job; results exist only after the candidate branch is pushed. See [staging-spec](staging-spec.md).
+3.13) and a Windows job; the first candidate run (42264658907) failed on a defect in a Linux-only test and the rerun (42268818788) passed all eight jobs (see the evidence). See [staging-spec](staging-spec.md).

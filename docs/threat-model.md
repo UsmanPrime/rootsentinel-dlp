@@ -113,7 +113,7 @@ staging directory (bytes, names, links, timing) and the network path to the gate
 | Registry or policy changed after ALLOW | Gateway returns STALE; nothing delivered; fresh transfer rescans (`test_c8_…`) | Changes are checked at release, not continuously |
 | Credential disclosure | No password option or environment variable; private file or hidden prompt; allowlisted journal fields; no secrets in logs, reports or errors (`test_no_credentials_…`) | **Windows file ACL is not verified by the agent**; path rules only |
 | Over-privileged agent account | Aborts unless the account role is EMPLOYEE | A compromised agent account can do what that employee can |
-| Producer writes straight to outbound | Operator permission separation | Not enforceable on a one-user Windows machine; shown on Linux CI with a second uid |
+| Producer writes straight to outbound | Operator permission separation | Not enforceable on a one-user Windows machine; shown on hosted Linux CI with a second uid (run 42268818788) |
 | Other channels (USB, e-mail, cloud sync, clipboard, other apps, direct copy) | **No claim** | Entirely outside the agent |
 
 The journal and quarantine directories hold original file names and, for blocked files, the blocked content. They are

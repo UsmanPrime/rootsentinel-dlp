@@ -13,7 +13,7 @@ explorer, exact dashboard aggregates and a guided synthetic demonstration.
 Phase 05 adds the local staging gateway agent: a separate, standard-library process that
 watches a staging directory and delivers a file to its outbound directory only after the
 gateway persisted ALLOW and released verified bytes. **Local browser workflow and the
-local staging agent are implemented; hosted CI for Phase 05 is pending its first push.
+local staging agent are implemented; hosted CI for Phase 05 passed on the candidate head (run 42268818788, all 8 jobs; see the evidence).
 Public deployment remains future work.**
 
 The unchanged cryptographic core uses Python `hashlib`. The backend uses FastAPI,

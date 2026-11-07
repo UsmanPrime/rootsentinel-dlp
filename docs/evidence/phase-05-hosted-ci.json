@@ -1,0 +1,57 @@
+{
+  "repository": "UsmanPrime/rootsentinel-dlp",
+  "branch": "phase-05-candidate",
+  "note": "Observed from GitHub Actions. Job conclusions only; pytest counts are recorded only where read from a job log.",
+  "runs": [
+    {
+      "run_id": 42264658907,
+      "head": "c19bc8af68f061f2fdd31770d19b17df0f1b6829",
+      "conclusion": "failure",
+      "cause": "test defect: os.utime by a non-owner in the Linux-only second-uid test (PermissionError); agent and gateway not at fault; agent (3.12) was marked cancelled by fail-fast and its log shows the same failure",
+      "jobs": {
+        "backend (3.12)": "success",
+        "backend (3.13)": "success",
+        "postgres": "success",
+        "frontend": "success",
+        "browser": "success",
+        "agent-windows": "success",
+        "agent (3.13)": "failure",
+        "agent (3.12)": "cancelled"
+      }
+    },
+    {
+      "run_id": 42268818788,
+      "head": "5e45d919eb38026fae42820cfebfc997bba4493b",
+      "conclusion": "success",
+      "url": "https://github.com/UsmanPrime/rootsentinel-dlp/actions/runs/42268818788",
+      "jobs": {
+        "backend (3.12)": "success",
+        "backend (3.13)": "success",
+        "postgres": "success",
+        "frontend": "success",
+        "browser": "success",
+        "agent (3.12)": "success",
+        "agent (3.13)": "success",
+        "agent-windows": "success"
+      },
+      "agent_linux": {
+        "pytest": "97 passed, 2 skipped",
+        "skipped": [
+          "tests/test_fsutil_cli.py:92",
+          "tests/test_fsutil_cli.py:101"
+        ],
+        "demo": "13 of 13 checks",
+        "python": [
+          "3.12",
+          "3.13"
+        ]
+      },
+      "agent_windows": "agent tests, demo and upload steps succeeded; pytest counts not read"
+    }
+  ],
+  "not_covered": [
+    "Python 3.12 on Windows",
+    "Windows pytest counts",
+    "Windows permission separation"
+  ]
+}

@@ -32,8 +32,9 @@ and therefore never delivered. Files in subdirectories are not scanned (nonrecur
 
 On Windows, separating *who may write* staging from *who may write* outbound is an **operator step** (a
 second account and ACLs). On a one-person machine the employee and the agent are the same user, so the
-separation cannot be demonstrated there; it is demonstrated on Linux CI with a second user id
-(`test_a_second_uid_can_fill_staging_but_cannot_write_outbound_while_the_agent_delivers`).
+separation cannot be demonstrated there; it is demonstrated on hosted Linux CI with a second user id
+(`test_a_second_uid_can_fill_staging_but_cannot_write_outbound_while_the_agent_delivers`, passed in run 42268818788
+on Python 3.12 and 3.13).
 
 ## Directories
 
@@ -286,7 +287,7 @@ See [Phase 05 evidence](evidence/phase-05.md) for results. Criteria and the test
 | 8 | STALE after registry or policy change delivers nothing; resubmit rescans | `test_c8_…` |
 | 9 | kill during the outbound write leaves no partial visible file | `test_c9_…` |
 | 10 | no credentials in logs, journal, reports or Git | `test_no_credentials_…`, `test_cli_has_no_password_option_…`, publication audit |
-| 11 | CI job runs the agent against a real gateway | `agent` and `agent-windows` jobs in `.github/workflows/ci.yml` |
+| 11 | CI job runs the agent against a real gateway | `agent` and `agent-windows` jobs in `.github/workflows/ci.yml`; both passed in run 42268818788 |
 | 12 | existing tests, crypto and migrations unaffected | `scripts/verify_phase05.py` boundary diffs |
 | 13 | reproducible demo, spec, threat model, evidence | `scripts/demo_phase05.py`, this document |
 
@@ -296,5 +297,5 @@ Enforcement covers only the controlled outbound directory (see above). Fixed-blo
 content. Stability polling cannot tell a paused writer from a finished one. One agent per state directory (an instance lock
 enforces it) and one gateway worker. Delivery to outbound is not proof that a recipient received or kept the file. The
 journal and quarantine hold original content and file names and must stay private. `scripts/verify_phase05.py` leaves its
-temporary directory in the system temp folder (delete it manually). Hosted Linux, Python 3.12, PostgreSQL and hosted
-Windows results exist only after a candidate push (see the evidence file).
+temporary directory in the system temp folder (delete it manually). Hosted CI results (Linux on Python 3.12 and 3.13, PostgreSQL,
+Windows on Python 3.13) are recorded in the evidence file; Python 3.12 on Windows was not run.
