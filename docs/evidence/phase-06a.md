@@ -1,6 +1,241 @@
-# Phase 06A verification record — hosted presenter demo, stage 1
+# Phase 06A verification record: hosted presenter demo
 
-Status: **local gates PASS on Windows. Hosted CI is pending hosted CI. Nothing has been deployed and no deployed measurement
+Status: **deployed and smoke-tested (15 of 15 checks) at https://rootsentinel-dlp.onrender.com. Per-client login throttling is
+NOT yet working on the host**: hop counts 1 and 2 failed, and the new single-address header option is **LIVE VERIFICATION PENDING**
+until the Part B probe results are added. Memory, payment-method and deploy-log facts that need the Render or Neon dashboard are
+marked "not verified" below, with the reason.
+
+Stage 2 branch: `chore/phase-06a-close` from `origin/main` at `569295aea10264db872d5ed2988ca10c2af670e7` (CI run `42576611571`,
+9 of 9 jobs). Stage 1 (local gates, before deployment) is kept unchanged at the end of this file. Procedure:
+[deployment.md](../deployment.md). Threat model: [threat-model.md](../threat-model.md).
+
+**Sources used below.** *Operator*: measured live by the project owner and reported for this record. *Probe*: measured by
+the scripted, credential-free requests from the development machine described here. *CI*: read from a GitHub Actions log.
+*Code*: read from the repository at this branch. *Dashboard*: read by Claude, read only, from the owner's signed-in Render and
+Neon tabs. That reading happens after a restart that loads a desktop-control MCP server; until it is added here,
+every dashboard value is marked "not verified".
+
+## Deployment configuration
+
+| Item | Value | Source |
+|---|---|---|
+| Web service | Render free instance, Docker runtime (this repository's `Dockerfile`), region Singapore | Operator; `render.yaml` (`plan: free`, `runtime: docker`) |
+| Database | Neon free tier, PostgreSQL 17, region Singapore, **direct** (non-pooled) endpoint | Operator |
+| Deploy trigger | `branch: main`, `autoDeployTrigger: checksPass` | `render.yaml` |
+| Branch protection | ruleset `protect-main` (id 26833962), active on the default branch: no deletion, no non-fast-forward, 9 required checks: `backend (3.12)`, `backend (3.13)`, `browser`, `postgres`, `frontend`, `agent (3.12)`, `agent (3.13)`, `agent-windows`, `container` | GitHub API, 2026-11-09 |
+| Edge in front of Render | responses carry `Server: cloudflare`, a `CF-RAY` header, `rndr-id` and `x-render-origin-server: uvicorn` | Probe, `GET /`, 2026-11-09T10:26:51Z |
+| Health body | `{"status":"ok","mode":"local","release_configured":true}` | Probe, same time |
+| `ROOTSENTINEL_TRUSTED_PROXY_HOPS` | `render.yaml` sets `"0"`; the hop trials below changed it in the dashboard | `render.yaml`; Operator |
+| `ROOTSENTINEL_CLIENT_IP_HEADER` | not in `render.yaml` on purpose: the dashboard is the single source for it | this record |
+
+## The two deploy failures
+
+Both are reported by the operator from the Render deploy logs. **Not verified from the logs by Claude** (dashboard not signed in).
+
+1. **Audit key secret file not found.** The first deploy ran before the `audit-keys.json` secret file was uploaded. The entrypoint
+   stops with `the audit key secret file was not found` (`docker/entrypoint.sh`, line 30). This is the intended fail-closed
+   behaviour, not a defect. Fix: upload the secret file (deployment checklist step 5).
+2. **libpq: `could not open certificate file "/root/.postgresql/postgresql.crt": Permission denied`.** The entrypoint starts as
+   root, then drops to uid 10001 with `setpriv`, which does not change environment variables, so the server inherited `HOME=/root`.
+   libpq looks for an optional client certificate under `$HOME/.postgresql/`. A missing file (ENOENT) is skipped, but a refused one
+   (EACCES, because uid 10001 cannot enter `/root`) is fatal. Fix in code: every command run as uid 10001 gets
+   `HOME=/nonexistent`, the same as its passwd entry (commit `c79a445`). CI regression (commit `569295a`, `container` job): reads the
+   server's own environment as uid 10001 and asserts `HOME=/nonexistent`; checks that the application variables still reach it;
+   checks that the certificate path gives `FileNotFoundError`; and has a **negative control** where the same stat with `HOME=/root`
+   must give `PermissionError`, which proves the check can fail. A temporary dashboard `HOME` variable was used as a workaround
+   before the code fix. The operator reports it is removed. **Not verified by Claude** (the environment page could not be read).
+
+**IPv6 noise in the logs.** Operator report: libpq logs `Network is unreachable` for the IPv6 (AAAA) addresses of the Neon host,
+because the Render instance has no IPv6 egress, and then connects over IPv4. These lines are noise, not a failure. **Not verified
+from the logs by Claude.**
+
+## Startup facts
+
+Operator report for the latest live deploy: bootstrap created 3 accounts and seeded 1 synthetic asset, an audit checkpoint was
+anchored for this container run, and the service went live at the primary URL. **Not verified from the deploy log by Claude.**
+The probe confirms the service answers at that URL with `mode: local` and `release_configured: true` (table above).
+
+## Smoke test on the live service (Operator, 15 of 15 PASS)
+
+`python -B scripts/smoke_public.py --base-url https://rootsentinel-dlp.onrender.com --username presenter-analyst`
+
+| # | Check | Result |
+|---|---|---|
+| 1 | warm-up: `/health` answered | PASS (warm service: 1.3 s) |
+| 2 | gateway reports local mode with release configured | PASS |
+| 3 | HSTS header present | PASS |
+| 4 | CSP (report-only) header present | PASS |
+| 5 | API documentation is not published | PASS |
+| 6 | frontend is served from the same origin | PASS |
+| 7 | anonymous API access is denied | PASS |
+| 8 | sign in (Argon2id verification time included) | PASS (2.67 s) |
+| 9 | session cookie is HttpOnly, Secure and SameSite=Strict | PASS |
+| 10 | benign fixture is ALLOWED | PASS |
+| 11 | released bytes match an independently computed SHA-256 | PASS |
+| 12 | a second release is refused (single use) | PASS |
+| 13 | protected fixture is BLOCKED | PASS |
+| 14 | release of the blocked transfer delivers nothing | PASS |
+| 15 | sign out | PASS |
+
+## Measurements
+
+| Measurement | Value | Source and time |
+|---|---|---|
+| Sign-in time, live (Argon2id t=3, m=64 MiB, p=4) | 2.67 s | Operator, smoke test |
+| Sign-in time, CI container | 0.05 s (earlier run); 0.06 s in run `42601238590` | Operator; CI log 2026-11-09T10:30:08Z |
+| Warm-up, warm service | 1.3 s | Operator, smoke test |
+| Cold start | see the next table | Probe |
+| Peak memory | **not verified yet** (Render metrics page still to be read) | |
+| Plan memory and CPU | 512 MB and 0.1 CPU per a secondary source; **not verified** in Render's own pages yet | |
+| Card required, Render / Neon | **pending, from operator** (billing pages are deliberately not browsed) | |
+| Image size, uncompressed | 224,987,716 bytes = 214.6 MiB (`du -sxb /` inside the image) | CI run `42601238590`, commit `fc5aae8` |
+| Image size, compressed content | 63,874,048 bytes (`docker save`, containerd image store) | CI run `42598215274`, commit `5126399` |
+| Image size budget | 258 MiB uncompressed = ceil(214.57 x 1.2), enforced in the `container` job | `.github/workflows/ci.yml` |
+
+`docker image inspect .Size` is 63,850,634 to 63,850,805 bytes in the same runs. On the runner's containerd image store both it and
+`docker save` report compressed layer content, which is why the budget uses `du -sxb /`.
+
+**Image size breakdown (uncompressed).** Local Docker Desktop (Linux engine 29.6.1) build of commit `e4195f7` with the same
+Dockerfile and no build arguments, as in CI; base `python:3.13-slim` at digest
+`sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90`; every value is `du -sxb` inside a container,
+2026-11-09 about 10:48 UTC. The local total equals the CI total to the byte (224,987,716 bytes): the build is reproducible across the two machines.
+
+| Part | Bytes | MiB | Share |
+|---|---|---|---|
+| Base image (`python:3.13-slim`, whole filesystem, including its own 5,695,244 bytes of site-packages) | 114,790,742 | 109.5 | 51.0 % |
+| Python packages added by `backend/requirements.lock` (site-packages 115,303,994 minus the base's 5,695,244) | 109,608,750 | 104.5 | 48.7 % |
+| Frontend build (`/opt/rootsentinel/frontend`) | 409,785 | 0.4 | 0.2 % |
+| Application code (`/app/backend`) | 168,507 | 0.2 | 0.1 % |
+| Other (entrypoint, account and directory changes; the remainder) | 9,932 | 0.0 | 0.0 % |
+| **Total** | **224,987,716** | **214.6** | |
+
+Largest site-packages entries: `psycopg_binary.libs` 52,919,471 bytes (the bundled libpq and OpenSSL), `sqlalchemy` 22,533,895,
+`psycopg_binary` 8,629,410, `pip` 5,545,809, `pydantic_core` 5,408,907, `pydantic` 3,760,948. Nearly all the size is the Python
+runtime and the PostgreSQL driver; the application and the frontend are under 1 MiB together.
+
+### Cold start
+
+Probe: `cold_start.py` (credential-free, development machine). Before each run it sent nothing to the service for 17 minutes
+(1,020 s; the previous request from this machine ended before each idle window began), then started `GET /health` and `GET /`
+in parallel at the same instant. Each retries every 3 s until the first HTTP 200; every request below succeeded on the first
+attempt, so the time is one long request held open while the instance started. All times UTC, 2026-11-09.
+
+| Run | Idle window from | First request | `/health` 200 at | `/health` | `/` (frontend index) 200 at | `/` | Validity |
+|---|---|---|---|---|---|---|---|
+| 1 | 10:27:13.764 | 10:44:13.765 | 10:45:05.686 | **51.92 s** | 10:45:06.297 | 52.53 s | see note |
+| 2 | 10:45:06.299 | 11:02:06.318 | 11:03:08.980 | **62.66 s** | 11:03:08.977 | 62.66 s | see note |
+| 3 | 11:03:09.000 | 11:20:09.002 | 11:21:01.994 | **52.99 s** | 11:21:02.005 | 53.00 s | see note |
+
+`/health`: median 52.99 s, maximum 62.66 s (no average is given). Note on validity: this machine sent no request in any idle
+window, but requests from anyone else cannot be excluded until the Render logs are read; a run with other traffic in its window
+will be marked invalid then. An earlier unplanned request at 10:25:54Z also took 51.9 s, but its idle time is unknown, so it is
+not counted. `/health` does not query the database (Code), but the entrypoint runs the migrations and the bootstrap against Neon
+before the server starts, so these times include any Neon wake-up. How the time splits between instance start, Neon and the
+first response is **not verified** (needs the Render logs).
+
+## Client identification for the login limiter
+
+**What the limiter does (Code, `backend/app/auth.py`).** Three 60 s windows: 30 attempts for everyone together, 15 per client key,
+5 per user name. Each now answers 429 with its own code:
+`LOGIN_RATE_LIMIT_GLOBAL`, `LOGIN_RATE_LIMIT_CLIENT`, `LOGIN_RATE_LIMIT_ACCOUNT`. The status and body shape are unchanged; the old
+single code was `LOGIN_RATE_LIMIT`, and the frontend and agent react to the status, not the code. At most two Argon2id
+verifications run at once; a third concurrent sign-in gets 503 `LOGIN_CAPACITY` at once (it is not queued).
+
+**The account code does not reveal whether an account exists.** The limiter runs before the database is queried and keys the
+account window on a digest of the submitted name. Names must already be canonical (`^[a-z0-9][a-z0-9_.-]*$`, 3 to 64
+characters); any other spelling is rejected with 422 before the limiter, so one account cannot get two buckets. A test sends five
+wrong passwords for an existing and for a nonexistent name: both then get the identical 429 `LOGIN_RATE_LIMIT_ACCOUNT` body
+without a cookie, and the correct password is also refused while the window is full.
+
+**Hop trials (Operator, live).** The probe sends 16 wrong-password sign-ins with unique user names from one network. With a working
+client key the 16th gets 429.
+
+| `ROOTSENTINEL_TRUSTED_PROXY_HOPS` | Result from one network | Verdict |
+|---|---|---|
+| 1 | 16 x 401, 0 x 429 | FAILED |
+| 2 (dashboard, redeployed) | 16 x 401, 0 x 429 | FAILED |
+
+**Why hop counting was abandoned.** With a fixed number of trusted proxies that each append their peer, the entry N places from
+the right of `X-Forwarded-For` is the real client. On Render the per-client window never filled, so the selected entry changed
+between requests from the same client. Working hypothesis, **not verified**: Render keeps a client-sent `X-Forwarded-For` and the
+path through Cloudflare and Render's proxies does not append a fixed number of entries. The Cloudflare headers in the probe above
+support the "Cloudflare in front" part only. Hop counting gives no reliable client key here; the proposal below sets it back to 0.
+
+**The header option (this branch).** `ROOTSENTINEL_CLIENT_IP_HEADER` (default empty, which keeps the earlier behaviour exactly):
+
+* The client key is that one header, used only when it appears exactly once and holds exactly one valid IPv4 or IPv6 address.
+  IPv4-mapped IPv6 becomes IPv4; zone identifiers, ports, lists and anything else are rejected.
+* Missing or invalid values all share one `unidentified` key, so a forged value can never choose its own bucket. The count is
+  logged at 1, 10, 100 and so on, without the raw value.
+* `X-Forwarded-For` is ignored in this mode. Startup refuses the header together with nonzero hops; the header name must match a
+  strict token pattern. The error messages do not echo the configured value.
+* uvicorn runs with `--no-proxy-headers` on both start lines of the entrypoint (a test checks this), so it never rewrites the
+  client address before the app sees it; the app is the only place that decides.
+
+**Threat assumptions.** This is only correct if Cloudflare fronts **every** request that reaches the service at
+`rootsentinel-dlp.onrender.com` and overwrites `True-Client-IP` with the address it saw. Any path to the service that skips that
+edge lets a client choose its own key. A local test shows the risk: without an edge, a spoofed `True-Client-IP` on each request
+gives 16 x 401. The live spoofed probe is the deciding test. If it is not limited, the header is not trustworthy and must be removed
+(back to hops 0). **LIVE VERIFICATION PENDING.**
+
+**What still protects sign-in if per-client throttling cannot be made to work (Code).** The global limit of 30 per minute; the
+5 per minute per user name limit, independent of addresses (which also lets anyone lock a known name out for a minute); at most two
+concurrent Argon2id verifications; the Argon2id cost itself; the same work and the same `INVALID_CREDENTIALS` answer for unknown and
+known names. With no per-client key, one client can use up the global limit and block everyone's sign-in for up to a minute.
+
+**Probe procedure.** `scripts/smoke_public.py --probe-login-throttle` with `--wait-seconds 65` before each run, because a run
+fills the per-client window for 60 s and three back-to-back runs would exceed the global limit of 30.
+`--spoof-client-ip-headers` forges random `True-Client-IP`, `CF-Connecting-IP` and `X-Forwarded-For` on every request.
+`--expect limited` passes only on fifteen 401 then a 429 with code `LOGIN_RATE_LIMIT_CLIENT`; `--expect unlimited` passes only on
+sixteen 401; any 429 with another code is reported as inconclusive (exit 2), never as a pass.
+
+## Security versus usability
+
+* **Argon2id cost.** 2.67 s per sign-in on the free instance against 0.05 to 0.06 s in CI. Two verifications can run at once, so
+  in a class where many people sign in together, people beyond two get 503 `LOGIN_CAPACITY` and must retry. Sign-ins should be
+  staggered. The cost was not lowered: it is what makes a stolen hash file expensive to attack.
+* **Shared addresses.** A class behind one NAT shares one client key (15 per minute) whatever identification is used, and all
+  users share the global 30 per minute.
+* **Visitor mode** remains out of scope. Whether to add an anonymous synthetic-only visitor mode is a Phase 06B decision.
+
+## Hosting limitations
+
+* Audit checkpoints and snapshots live on the container's ephemeral disk and are lost on every restart or deploy: the audit chain
+  is tamper evident within one container lifetime only.
+* The free instance sleeps after idling; the first request then waits for a cold start (table above).
+* One uvicorn worker by design (the limiters, processing slots and audit ordering assume a single process).
+* **Demo day:** do not push to `main` (every push that passes CI redeploys and restarts the service). Open the site about 10
+  minutes before presenting so the service and Neon are awake.
+
+## Deferred to Phase 06B
+
+* A visible "LOCAL" badge on the public site (to show which mode the page is in).
+* The visitor-mode decision above.
+
+## Stage 2 changes and checks
+
+| File | Purpose |
+|---|---|
+| `backend/app/settings.py` | `client_ip_header` setting: token validation, lowercase, refuses nonzero hops |
+| `backend/app/api.py` | `header_client` and the shared `unidentified` key in the request guard; hop path unchanged |
+| `backend/app/auth.py` | one 429 code per login limit |
+| `backend/tests/test_client_ip.py` | 39 new tests (parsing, forged headers ignored, shared bucket, startup refusal, no value echo, uvicorn flags, 429 codes, no account enumeration) |
+| `scripts/smoke_public.py` | `--spoof-client-ip-headers`, `--expect`, `--wait-seconds`, inconclusive on a non-client 429 |
+| `.github/workflows/ci.yml` | image size step inside the existing `container` job (job names unchanged) |
+| `docs/deployment.md`, `README.md`, this file | documentation |
+
+Checks run for stage 2 (Windows 11, project venv, SQLite): backend `pytest` **270 passed, 1 skipped, 606 subtests passed**;
+agent `pytest` **96 passed, 3 skipped** (unchanged); `scripts/audit_publication.py` 0 findings; `git diff --check` clean; workflow
+parsed with PyYAML and `actionlint` 1.7.12 exit 0. A mutation that disables header mode makes two of the new tests fail. The probe
+was run end to end against a real local uvicorn server: per-client 429 gives PASS or FAIL as expected, a global 429 gives
+INCONCLUSIVE (exit 2). Hosted CI on this branch: runs `42597528426` (`6206b52`), `42598215274` (`5126399`) and `42601238590`
+(`fc5aae8`), each 9 of 9 jobs successful.
+
+---
+
+## Stage 1 record (local gates before the first deploy, unchanged)
+
+Stage 1 status at the time: **local gates PASS on Windows. Hosted CI is pending hosted CI. Nothing has been deployed and no deployed measurement
 exists** (cold start, memory on the host, login time on the host and the right trusted-proxy hop count are all still to be measured).
 Docker is not available on the development machine, so the image was never built locally and the CI `container` job is the first
 place it will be built and run.
@@ -9,7 +244,7 @@ Baseline: `c0a1669d0e399dd5774d916b5c0d735e6c6a4783` (`main`, Phase 05 published
 Feature commit: `809205e3b5e7dd39ce818d438528bd473b030328`. Procedure and the steps only the operator can do:
 [deployment.md](../deployment.md). Threat model: [threat-model.md](../threat-model.md).
 
-## Scope and decisions
+### Scope and decisions
 
 * Stage 1 only: an authenticated, presenter-driven demonstration. **No visitor mode, no anonymous session, no fixture catalogue.**
 * The hosted app runs with `ROOTSENTINEL_MODE=local` over an `https://` origin; `Settings.hosted` is derived from the scheme. This
@@ -26,7 +261,7 @@ Feature commit: `809205e3b5e7dd39ce818d438528bd473b030328`. Procedure and the st
   (`Evidence.tsx`, `Integrity.tsx`, two in `Overview.tsx`), so the report-only policy uses `style-src 'self'` plus
   `style-src-attr 'unsafe-inline'`. It is **report-only** and not enforced.
 
-## Checks actually run (Windows 11, Python 3.13.4, SQLite, Node 24.11.0)
+### Checks actually run (Windows 11, Python 3.13.4, SQLite, Node 24.11.0)
 
 | Check | Result |
 |---|---|
@@ -41,7 +276,7 @@ Feature commit: `809205e3b5e7dd39ce818d438528bd473b030328`. Procedure and the st
 
 A mutation check (making `forwarded_client` ignore the header) made the spoofing test fail, so that test discriminates.
 
-### What the new tests prove (hosted configuration, real application, synthetic data)
+#### What the new tests prove (hosted configuration, real application, synthetic data)
 
 Settings validation and unchanged defaults; frontend served with SPA fallback; `Cache-Control: no-store`, nosniff, frame denial,
 HSTS and CSP-report-only on every hosted response and none of them on plain local http; unknown files and `/api` paths give typed
@@ -54,7 +289,7 @@ disable, invalid and unsafe files, no secret in output, one audit event and a ch
 configuration: a scan ALLOW is not a release credential, release is single use and owner-only, a BLOCK never delivers, and a
 tampered audit chain stops the release (503, nothing consumed).
 
-### Local simulation of the container flow (not Docker, not a deployed measurement)
+#### Local simulation of the container flow (not Docker, not a deployed measurement)
 
 Using the same steps the entrypoint performs, on this machine: generated key, hash file made with `make_account_hashes.py`,
 `alembic upgrade head`, `bootstrap` twice (first `created=1`, `seeded=1`; second `unchanged=1`, `seeded=0 existing=1`), `uvicorn` with
@@ -64,13 +299,13 @@ byte-identical release by independent SHA-256, second release refused, protected
 audit sequence 15, sign-out. The server logged four start-up lines and nothing else. The login probe printed fifteen 401 then 429.
 Timings from that run (warm-up 1.6 s, sign-in 0.12 s) are from a local process and say nothing about Render.
 
-## Pending hosted CI, not yet run
+### Pending hosted CI, not yet run
 
 * All jobs on the new branch, including the new `container` job (image build, refusal without an https origin, container start,
   smoke test, server uid 10001, restart and idempotent bootstrap) and the new tests on Linux, Python 3.12 and PostgreSQL.
 * The Dockerfile, entrypoint and `render.yaml` have never been built or validated by Docker or Render.
 
-## Risks and limitations
+### Risks and limitations
 
 * On Render's free tier checkpoints and snapshots are lost on restart: the audit chain is tamper evident within one container
   lifetime only, with no forensic claim (deployment.md, "Audit integrity on a hosted free tier").
