@@ -194,15 +194,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bytes="$(docker image inspect --format '{{.Size}}' rootsentinel-hosted:ci)"
+          # With the containerd image store (used by the runner) .Size is the compressed content size, so the
+          # uncompressed size is measured as the byte length of `docker save` (an uncompressed tar of the layers).
+          inspect_bytes="$(docker image inspect --format '{{.Size}}' rootsentinel-hosted:ci)"
+          bytes="$(docker save rootsentinel-hosted:ci | wc -c)"
           mib=$(( (bytes + 1048575) / 1048576 ))
           {
             echo "### Hosted image size"
             echo ""
-            echo "Uncompressed size (docker image inspect .Size): ${bytes} bytes = ${mib} MiB (rounded up)."
+            echo "Uncompressed size (byte length of docker save): ${bytes} bytes = ${mib} MiB (rounded up)."
+            echo "docker image inspect .Size (content size under the containerd store): ${inspect_bytes} bytes."
             echo "Budget (IMAGE_SIZE_BUDGET_MIB): ${IMAGE_SIZE_BUDGET_MIB:-not set, report only}."
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "image size: ${bytes} bytes = ${mib} MiB; budget: ${IMAGE_SIZE_BUDGET_MIB:-not set}"
+          echo "image size: ${bytes} bytes = ${mib} MiB uncompressed (docker save); inspect .Size ${inspect_bytes} bytes; budget: ${IMAGE_SIZE_BUDGET_MIB:-not set}"
           if [ -n "$IMAGE_SIZE_BUDGET_MIB" ] && [ "$mib" -gt "$IMAGE_SIZE_BUDGET_MIB" ]; then
             echo "::error::hosted image is ${mib} MiB, above the ${IMAGE_SIZE_BUDGET_MIB} MiB budget"
             exit 1
