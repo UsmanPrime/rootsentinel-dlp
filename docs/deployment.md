@@ -131,8 +131,8 @@ The dashboards change; where this list and the vendor page disagree, the vendor 
    ```
    Back up `audit-keys.json` **offline** (an encrypted drive or a password manager attachment). If it is lost, the audit chain can
    never be verified again and you must start a new database. Do not store `$S` in OneDrive.
-4. **Render service.** In Render choose New > Blueprint, connect the GitHub repository and the branch you are deploying (for the
-   first rehearsal the candidate branch, later `main`). Keep or change the name in `render.yaml`; the public URL becomes
+4. **Render service.** In Render choose New > Blueprint, connect the GitHub repository and the `main` branch (`render.yaml` sets
+   `branch: main`; deploy from `main` only). Keep or change the name in `render.yaml`; the public URL becomes
    `https://<name>.onrender.com`. When asked, enter `ROOTSENTINEL_ORIGIN` as that exact URL and `ROOTSENTINEL_DATABASE_URL`.
 5. **Secret files.** In the service's Environment page add two secret files named `audit-keys.json` and `accounts.json`, pasting
    the file contents into the dashboard form. Saving redeploys. Deleting `$S\accounts.json` locally afterwards is optional.
@@ -160,6 +160,17 @@ The dashboards change; where this list and the vendor page disagree, the vendor 
   429 from the second, and the same limit for the spoofed run. If the second network is also limited, try 2, then 3. Leave 0 if
   none works. The probe uses the login limit for about a minute: never run it during the demo. A classroom behind one NAT shares one
   address, so up to 15 sign-ins per minute per address and 30 per minute overall apply however this is set.
+
+### Deploy policy: main only, after checks, no pushes on demo day
+
+* **Deploy from `main`.** `render.yaml` sets `branch: main`. Candidate and feature branches are never deployed.
+* **Auto-deploy after checks.** `render.yaml` sets `autoDeployTrigger: checksPass`, which per Render's Blueprint specification
+  deploys a new commit on the linked branch only if that branch's CI checks pass. This is Render's behaviour as documented, not
+  something verified here until a real deploy exists. Render's older `autoDeploy` key is deprecated and is not used.
+* **No pushes to `main` on demo day.** Every deploy restarts the service. A restart loses the audit checkpoints (they live on the
+  container's ephemeral disk) and turns any in-flight transfer into `DELIVERY_UNKNOWN`, which must then be repeated. Merge and push
+  well before the demo, wait for the deploy to finish, and run the smoke test afterwards.
+* A push to `main` therefore deploys the demo by itself once checks are green: treat every push to `main` as a deploy.
 
 ### Day of the demo
 

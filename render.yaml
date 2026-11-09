@@ -3,13 +3,18 @@
 # (Environment > Secret Files). See docs/deployment.md for the exact checklist.
 # No healthCheckPath on purpose: the /health check needs ROOTSENTINEL_ORIGIN to equal the service's
 # real URL, which is only known after the service exists. Enable it afterwards (checklist step).
+# Deploy policy: deploy from main only, and only after the GitHub checks for the commit pass
+# (autoDeployTrigger: checksPass; the older autoDeploy key is deprecated and deliberately absent).
+# Do not push on demo day: every deploy restarts the service, loses the audit checkpoints
+# (ephemeral container disk) and turns in-flight transfers into DELIVERY_UNKNOWN. See docs/deployment.md.
 services:
   - type: web
     name: rootsentinel-dlp            # choose a distinctive name: it becomes https://<name>.onrender.com
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile
-    autoDeploy: false                 # deploys are a deliberate click
+    branch: main                      # deploy from main only
+    autoDeployTrigger: checksPass     # deploy a new main commit only after its GitHub checks pass
     envVars:
       - key: ROOTSENTINEL_MODE
         value: local
