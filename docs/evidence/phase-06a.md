@@ -2,8 +2,9 @@
 
 Status: **deployed and smoke-tested (15 of 15 checks) at https://rootsentinel-dlp.onrender.com. Per-client login throttling is
 NOT yet working on the host**: hop counts 1 and 2 failed, and the new single-address header option is **LIVE VERIFICATION PENDING**
-until the Part B probe results are added. Memory, payment-method and deploy-log facts that need the Render or Neon dashboard are
-marked "not verified" below, with the reason.
+until the Part B probe results are added. Deploy logs, plan limits, cold-start boot times and environment variable names were read
+from the Render and Neon dashboards. Peak memory, Neon scale-to-zero and whether a card is required are still not verified; the
+reasons are given below.
 
 Stage 2 branch: `chore/phase-06a-close` from `origin/main` at `569295aea10264db872d5ed2988ca10c2af670e7` (CI run `42576611571`,
 9 of 9 jobs). Stage 1 (local gates, before deployment) is kept unchanged at the end of this file. Procedure:
@@ -12,15 +13,21 @@ Stage 2 branch: `chore/phase-06a-close` from `origin/main` at `569295aea10264db8
 **Sources used below.** *Operator*: measured live by the project owner and reported for this record. *Probe*: measured by
 the scripted, credential-free requests from the development machine described here. *CI*: read from a GitHub Actions log.
 *Code*: read from the repository at this branch. *Dashboard*: read by Claude, read only, from the owner's signed-in Render and
-Neon tabs. That reading happens after a restart that loads a desktop-control MCP server; until it is added here,
-every dashboard value is marked "not verified".
+Neon tabs on 2026-11-09 between 11:27 and 11:32 UTC. Nothing was edited, deployed, restarted or revealed, and no billing page
+was opened. The dashboards show local time (GMT+5); every time below is converted to UTC. Values are recorded here as text; no
+screenshots are kept in the repository.
 
 ## Deployment configuration
 
 | Item | Value | Source |
 |---|---|---|
-| Web service | Render free instance, Docker runtime (this repository's `Dockerfile`), region Singapore | Operator; `render.yaml` (`plan: free`, `runtime: docker`) |
-| Database | Neon free tier, PostgreSQL 17, region Singapore, **direct** (non-pooled) endpoint | Operator |
+| Web service | Render free instance, Docker runtime (this repository's `Dockerfile`), Blueprint managed, deploys `main` (live commit `569295a`) | Dashboard (service header); `render.yaml` (`plan: free`, `runtime: docker`) |
+| Web service region | Singapore | Operator (not shown on the pages read) |
+| Plan limits | memory **512 MB**, CPU **0.15** | Dashboard (Metrics page, "Limit") |
+| Database | Neon **Free plan**, region **AWS Asia Pacific 1 (Singapore)**; one branch `production`; primary compute autoscaling **0.25 to 2 CU** | Dashboard (Neon project and Computes pages) |
+| Database version and endpoint | PostgreSQL 17, **direct** (non-pooled) endpoint | Operator (the connection string was not read) |
+| Neon scale to zero (autosuspend) | **not verified**: shown only inside the compute's Edit dialog, which was deliberately not opened | |
+| Environment variable names | `ROOTSENTINEL_DATABASE_URL`, `ROOTSENTINEL_MAX_UPLOAD_BYTES`, `ROOTSENTINEL_MODE`, `ROOTSENTINEL_ORIGIN`, `ROOTSENTINEL_RETENTION_SECONDS`, `ROOTSENTINEL_SESSION_SECONDS`, `ROOTSENTINEL_TRANSFER_RATE_PER_MINU…` (name cut off on screen), `ROOTSENTINEL_TRUSTED_PROXY_HOPS`. **No `HOME`** and no `ROOTSENTINEL_CLIENT_IP_HEADER`. Values were not revealed | Dashboard (Environment page, names only) |
 | Deploy trigger | `branch: main`, `autoDeployTrigger: checksPass` | `render.yaml` |
 | Branch protection | ruleset `protect-main` (id 26833962), active on the default branch: no deletion, no non-fast-forward, 9 required checks: `backend (3.12)`, `backend (3.13)`, `browser`, `postgres`, `frontend`, `agent (3.12)`, `agent (3.13)`, `agent-windows`, `container` | GitHub API, 2026-11-09 |
 | Edge in front of Render | responses carry `Server: cloudflare`, a `CF-RAY` header, `rndr-id` and `x-render-origin-server: uvicorn` | Probe, `GET /`, 2026-11-09T10:26:51Z |
@@ -30,12 +37,22 @@ every dashboard value is marked "not verified".
 
 ## The two deploy failures
 
-Both are reported by the operator from the Render deploy logs. **Not verified from the logs by Claude** (dashboard not signed in).
+**Dashboard verified** from the Render deploy list (8 deploys) and both deploy logs. Both failures are on commit `6277f0e`.
 
-1. **Audit key secret file not found.** The first deploy ran before the `audit-keys.json` secret file was uploaded. The entrypoint
-   stops with `the audit key secret file was not found` (`docker/entrypoint.sh`, line 30). This is the intended fail-closed
-   behaviour, not a defect. Fix: upload the secret file (deployment checklist step 5).
-2. **libpq: `could not open certificate file "/root/.postgresql/postgresql.crt": Permission denied`.** The entrypoint starts as
+| Deploy | Trigger | Started (UTC) | Duration | Result |
+|---|---|---|---|---|
+| `dep-dbomlpvf3r2c73blnktg` | Blueprint | 06:40:39 | 40.3 s | failed, "Exited with status 1" (failure 1) |
+| `dep-dbomomdg1s2s73fmp41g` | Manual | about 06:46 | 26.7 s | failed, "Exited with status 1" (failure 2) |
+| `dep-dbompqpsrm7s73cfnetg` | Manual | 06:49:15 | 1 min 22 s | first successful deploy |
+| four further deploys | health check path change, Auto-Deploy, Manual x2 | 06:52 to 09:44 | 57.7 s to 1 min 4 s | all succeeded |
+| `dep-dbopeadg1s2s73fuhmsg` | Manual, `569295a` | 09:49:29 | 1 min 3 s | succeeded, **live** |
+
+1. **Audit key secret file not found.** The first deploy ran before the `audit-keys.json` secret file was uploaded. The log shows
+   `rootsentinel: the audit key secret file was not found; upload it as a secret file (see docs/deployment.md)` at 06:41:17 and
+   06:41:19, then `Exited with status 1` (`docker/entrypoint.sh`, line 30). This is the intended fail-closed behaviour, not a
+   defect. Fix: upload the secret file (deployment checklist step 5).
+2. **libpq: `could not open certificate file "/root/.postgresql/postgresql.crt": Permission denied`.** Logged at 06:47:24 for
+   both IPv4 addresses of the Neon host, followed by the SQLAlchemy error link and the instance restart. The entrypoint starts as
    root, then drops to uid 10001 with `setpriv`, which does not change environment variables, so the server inherited `HOME=/root`.
    libpq looks for an optional client certificate under `$HOME/.postgresql/`. A missing file (ENOENT) is skipped, but a refused one
    (EACCES, because uid 10001 cannot enter `/root`) is fatal. Fix in code: every command run as uid 10001 gets
@@ -43,17 +60,29 @@ Both are reported by the operator from the Render deploy logs. **Not verified fr
    server's own environment as uid 10001 and asserts `HOME=/nonexistent`; checks that the application variables still reach it;
    checks that the certificate path gives `FileNotFoundError`; and has a **negative control** where the same stat with `HOME=/root`
    must give `PermissionError`, which proves the check can fail. A temporary dashboard `HOME` variable was used as a workaround
-   before the code fix. The operator reports it is removed. **Not verified by Claude** (the environment page could not be read).
+   before the code fix. **Dashboard verified: removed** (no `HOME` among the environment variable names).
 
-**IPv6 noise in the logs.** Operator report: libpq logs `Network is unreachable` for the IPv6 (AAAA) addresses of the Neon host,
-because the Render instance has no IPv6 egress, and then connects over IPv4. These lines are noise, not a failure. **Not verified
-from the logs by Claude.**
+**IPv6 lines in the logs.** Dashboard verified, partly. In failure 2 the same libpq error lists three IPv6 addresses of the Neon
+host, each with `connection is bad: ... Network is unreachable`, next to the two IPv4 addresses that failed with the certificate
+error. So the instance has no IPv6 route and the IPv4 attempts were the ones that reached the server. In the successful deploy
+logs and in the application logs read (10:26 to 11:23 UTC) **no** IPv6 line appears: libpq reports the per-address errors only
+when every address fails. The operator's "IPv6 lines followed by a successful connection" was therefore **not seen** in any log
+that was read; it is plausible but not verified.
 
 ## Startup facts
 
-Operator report for the latest live deploy: bootstrap created 3 accounts and seeded 1 synthetic asset, an audit checkpoint was
-anchored for this container run, and the service went live at the primary URL. **Not verified from the deploy log by Claude.**
-The probe confirms the service answers at that URL with `mode: local` and `release_configured: true` (table above).
+Dashboard verified from the deploy logs:
+
+| Deploy | Bootstrap | Checkpoint | Live |
+|---|---|---|---|
+| First successful (`6277f0e`, 06:49:15) | `accounts: created=3 updated=0 unchanged=0` (06:50:05); `assets: seeded=1 existing=0` (06:50:10) | anchored for this container run (06:50:11) | "Your service is live" 06:50:37, primary URL `https://rootsentinel-dlp.onrender.com` |
+| Latest live (`569295a`, 09:49:29) | `accounts: created=0 updated=0 unchanged=3` (09:50:08); `assets: seeded=0 existing=1` (09:50:09) | anchored (09:50:10) | 09:50:32 |
+
+Correction to the earlier operator note: `created=3` and `seeded=1` come from the **first** successful deploy, not the latest. The
+latest deploy and every cold start below report `unchanged=3` and `existing=1`, which shows the bootstrap is idempotent against the
+same Neon database. Each new container anchors its own checkpoint (they are not durable across restarts). Render logs
+`Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance`. The probe confirms the service answers at that URL
+with `mode: local` and `release_configured: true` (table above).
 
 ## Smoke test on the live service (Operator, 15 of 15 PASS)
 
@@ -85,8 +114,9 @@ The probe confirms the service answers at that URL with `mode: local` and `relea
 | Sign-in time, CI container | 0.05 s (earlier run); 0.06 s in run `42601238590` | Operator; CI log 2026-11-09T10:30:08Z |
 | Warm-up, warm service | 1.3 s | Operator, smoke test |
 | Cold start | see the next table | Probe |
-| Peak memory | **not verified yet** (Render metrics page still to be read) | |
-| Plan memory and CPU | 512 MB and 0.1 CPU per a secondary source; **not verified** in Render's own pages yet | |
+| Peak memory, 24 h and 10:27 to 11:22 UTC | **not verified**: the Render Metrics page shows only the limits; it says memory and CPU usage need a paid compute plan | Dashboard |
+| Plan memory and CPU | 512 MB and **0.15 CPU** (an earlier secondary source said 0.1 CPU) | Dashboard (Metrics page) |
+| Request logs | not available: the "Request logs" option is disabled on this plan | Dashboard (Logs page) |
 | Card required, Render / Neon | **pending, from operator** (billing pages are deliberately not browsed) | |
 | Image size, uncompressed | 224,987,716 bytes = 214.6 MiB (`du -sxb /` inside the image) | CI run `42601238590`, commit `fc5aae8` |
 | Image size, compressed content | 63,874,048 bytes (`docker save`, containerd image store) | CI run `42598215274`, commit `5126399` |
@@ -122,16 +152,35 @@ attempt, so the time is one long request held open while the instance started. A
 
 | Run | Idle window from | First request | `/health` 200 at | `/health` | `/` (frontend index) 200 at | `/` | Validity |
 |---|---|---|---|---|---|---|---|
-| 1 | 10:27:13.764 | 10:44:13.765 | 10:45:05.686 | **51.92 s** | 10:45:06.297 | 52.53 s | see note |
-| 2 | 10:45:06.299 | 11:02:06.318 | 11:03:08.980 | **62.66 s** | 11:03:08.977 | 62.66 s | see note |
-| 3 | 11:03:09.000 | 11:20:09.002 | 11:21:01.994 | **52.99 s** | 11:21:02.005 | 53.00 s | see note |
+| 1 | 10:27:13.764 | 10:44:13.765 | 10:45:05.686 | **51.92 s** | 10:45:06.297 | 52.53 s | valid (inferred, see below) |
+| 2 | 10:45:06.299 | 11:02:06.318 | 11:03:08.980 | **62.66 s** | 11:03:08.977 | 62.66 s | valid (inferred, see below) |
+| 3 | 11:03:09.000 | 11:20:09.002 | 11:21:01.994 | **52.99 s** | 11:21:02.005 | 53.00 s | valid (inferred, see below) |
 
-`/health`: median 52.99 s, maximum 62.66 s (no average is given). Note on validity: this machine sent no request in any idle
-window, but requests from anyone else cannot be excluded until the Render logs are read; a run with other traffic in its window
-will be marked invalid then. An earlier unplanned request at 10:25:54Z also took 51.9 s, but its idle time is unknown, so it is
-not counted. `/health` does not query the database (Code), but the entrypoint runs the migrations and the bootstrap against Neon
-before the server starts, so these times include any Neon wake-up. How the time splits between instance start, Neon and the
-first response is **not verified** (needs the Render logs).
+`/health`: median 52.99 s, maximum 62.66 s (no average is given). An earlier unplanned request at 10:25:54Z also took 51.9 s, but
+its idle time is unknown, so it is not counted.
+
+**Where the time goes (Dashboard, Render application logs, whole seconds).** Offsets are from the probe's first request.
+
+| Run | Previous instance shut down | Instance | First container line (bootstrap result) | `Started server process` | `Uvicorn running` | `/health` 200 (probe) |
+|---|---|---|---|---|---|---|
+| 1 | 10:41:53 (`nf6ph`) | `4d6z8` | 10:44:41 (+27 s) | 10:44:55 (+41 s) | 10:44:59 (+45 s) | +51.9 s |
+| 2 | 11:00:07 (`4d6z8`) | `12wh7` | 11:02:38 (+32 s) | 11:02:55 (+49 s) | 11:03:00 (+54 s) | +62.7 s |
+| 3 | 11:18:09 (`12wh7`) | `1bn65` | 11:20:40 (+31 s) | 11:20:56 (+47 s) | 11:21:01 (+52 s) | +53.0 s |
+
+* 27 to 32 s pass before the container prints anything. This covers instance start, image start, the Alembic migrations and the
+  bootstrap, which both connect to Neon. The logs do not separate these, so the Neon wake-up share is **not verified**.
+* 14 to 17 s pass between the bootstrap result and `Started server process` (checkpoint anchoring and importing the application on
+  0.15 CPU), then 4 to 5 s until uvicorn is ready.
+* 1 to 9 s pass between `Uvicorn running` and the probe's 200 (Render's routing to the new instance). The log has one-second
+  resolution, so this part is approximate.
+
+**Why the runs are counted as valid.** Render's request logs are not available on this plan, so other traffic cannot be read
+directly. The application logs rule it out indirectly. The instances that served runs 1 and 2 shut down 15 min 1 s and 15 min 0 s
+after the probe's own last request (10:45:06 to 11:00:07, and 11:03:09 to 11:18:09), and the instance before run 1 shut down at
+10:41:53, about 15 min after the probe's earlier requests. A request from anyone else during an idle window would have done one of
+two visible things: kept the instance up past that point, or started a new instance before the probe's request. The logs show
+neither. Each new instance's first line comes 27 to 32 s after the probe's request, with no log line in between. This is an
+inference from the logs, not a request-level record.
 
 ## Client identification for the login limiter
 
@@ -148,7 +197,8 @@ wrong passwords for an existing and for a nonexistent name: both then get the id
 without a cookie, and the correct password is also refused while the window is full.
 
 **Hop trials (Operator, live).** The probe sends 16 wrong-password sign-ins with unique user names from one network. With a working
-client key the 16th gets 429.
+client key the 16th gets 429. The dashboard confirms `ROOTSENTINEL_TRUSTED_PROXY_HOPS` exists as a dashboard variable (its value
+was not revealed) and that `ROOTSENTINEL_CLIENT_IP_HEADER` is **not** set on the host.
 
 | `ROOTSENTINEL_TRUSTED_PROXY_HOPS` | Result from one network | Verdict |
 |---|---|---|
