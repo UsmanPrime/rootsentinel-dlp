@@ -87,7 +87,7 @@ root only to copy the two secret files to private 0600 paths, then migrates, run
 | `ROOTSENTINEL_ORIGIN` | exact public origin, https, no trailing slash | `https://<service>.onrender.com` |
 | `ROOTSENTINEL_DATABASE_URL` | Neon connection, driver prefix `postgresql+psycopg://` | set in the dashboard only |
 | `ROOTSENTINEL_TRUSTED_PROXY_HOPS` | `X-Forwarded-For` entry taken N from the right; 0 ignores the header | `0` (hop counting did not work on Render, see the Phase 06A evidence) |
-| `ROOTSENTINEL_CLIENT_IP_HEADER` | one header holding exactly one client address, set by the edge (for example `True-Client-IP`); empty = off. Cannot be combined with nonzero hops (startup refuses) | dashboard only, not in `render.yaml`; live verification pending |
+| `ROOTSENTINEL_CLIENT_IP_HEADER` | one header holding exactly one client address, set by the edge (for example `True-Client-IP`); empty = off. Cannot be combined with nonzero hops (startup refuses) | dashboard only, not in `render.yaml`; `True-Client-IP` on the live service (forged values verified not to choose a bucket, Phase 06A evidence) |
 | `ROOTSENTINEL_EXTRA_HOSTS` | exact additional Host values (for example a custom domain), no wildcards | unset |
 | `ROOTSENTINEL_SESSION_SECONDS` / `RETENTION_SECONDS` | 60-86400 / 1-900 | 3600 / 900 |
 | `ROOTSENTINEL_MAX_UPLOAD_BYTES` | 1024-10485760 | 1048576 (1 MiB) |
@@ -101,7 +101,9 @@ proxies that each append their peer's address. A header with too few entries or 
 With `ROOTSENTINEL_CLIENT_IP_HEADER` set, `X-Forwarded-For` is ignored and the login limiter keys on that one header, but only when
 it holds exactly one valid IPv4 or IPv6 address (IPv4-mapped IPv6 is normalised). A missing, repeated, list-valued or invalid header
 puts the request in one shared `unidentified` bucket; the raw value is never logged. This is safe only if the edge overwrites that
-header on every request that can reach the service. Run the throttle probe with `--spoof-client-ip-headers` to check it.
+header on every request that can reach the service. Run the throttle probe with `--spoof-mode true-client-ip` and
+`--spoof-mode xff` (`--expect limited`) to check it. On Render, Cloudflare refuses a client-set `CF-Connecting-IP` at the edge
+(403, Cloudflare error 1000), so `--spoof-mode cf-connecting-ip` and `all` need `--expect limited-or-rejected`.
 
 ### Secrets: files and hashes, never plaintext
 
@@ -121,7 +123,8 @@ header on every request that can reach the service. Run the throttle probe with 
 The dashboards change; where this list and the vendor page disagree, the vendor page wins. Never paste a secret into a chat.
 
 1. **Accounts and 2FA.** Make sure you have a GitHub account, create a Neon account and a Render account (Render can sign in with
-   GitHub). Turn on two-factor authentication on all three. Whether Render's free tier needs a payment card was not verified.
+   GitHub). Turn on two-factor authentication on all three. Neither Render's nor Neon's free tier asked for a payment card at
+   sign-up (operator, 2026-11-09).
 2. **Neon.** Create a project and a database. Pick a region geographically near the Render region you will use (the free Render
    regions were not verified). Copy the **direct** (non-pooled) connection string, change the prefix `postgresql://` to
    `postgresql+psycopg://` and keep `sslmode=require`. If the client rejects `channel_binding=require`, remove that parameter. Keep
@@ -153,21 +156,30 @@ The dashboards change; where this list and the vendor page disagree, the vendor 
 9. **Measure and record** (see below), then put the real numbers in `docs/evidence`. Do not quote numbers you did not measure.
 10. **Course sheet.** Add the repository link and the hosted URL to the topic selection sheet yourself.
 
-### What to measure after the first deploy (none of this exists yet)
+### What to measure after a deploy (Phase 06A values in the evidence record)
 
 * **Cold start.** After more than 15 minutes without traffic, run the smoke test; its first line prints the seconds until `/health`
-  answered. Repeat three times; record the median and the maximum. This includes Neon waking up after its own idle suspend.
-* **Memory.** In the Render dashboard's metrics, note the peak memory during the smoke test, and during several simultaneous
-  sign-ins. The free instance is small (512 MB and 0.1 CPU according to a secondary source; not confirmed in Render's own page).
-* **Argon2 login time.** The smoke test prints the sign-in time. Record it.
-* **Client identification.** Hop counts 1 and 2 were tried on Render and did not work (Phase 06A evidence). The next candidate is
-  `ROOTSENTINEL_CLIENT_IP_HEADER=True-Client-IP` with hops 0. After the deploy, wait 65 s before each run of
-  `python -B scripts\smoke_public.py --base-url https://<name>.onrender.com --probe-login-throttle --wait-seconds 65 --expect ...`:
-  normal (`--expect limited`), then `--spoof-client-ip-headers --expect limited`, then from a second network `--expect unlimited`.
-  A 429 whose code is not `LOGIN_RATE_LIMIT_CLIENT` (global or account limit) is inconclusive, not a pass. If the spoofed run is not
-  limited, the header is not trustworthy: remove it. The probe uses the login limit for about a minute: never run it during the
-  demo. A classroom behind one NAT shares one address, so up to 15 sign-ins per minute per address and 30 per minute overall apply
-  however this is set.
+  answered. Repeat three times; record the median and the maximum. This includes Neon waking up after its own idle suspend. Phase
+  06A measured a median of 52.99 s and a maximum of 62.66 s. From the Render logs the time splits into: 27 to 32 s before the
+  container prints anything (instance and image start, migrations and bootstrap, both connecting to Neon; the Neon share is not
+  separated), 14 to 17 s from the bootstrap result to `Started server process` (checkpoint anchoring and importing the app), 4 to
+  5 s until uvicorn is ready, then 1 to 9 s of routing before the first 200.
+* **Memory.** The free instance has **512 MB and 0.15 CPU** (Render Metrics page, "Limit"). Memory and CPU usage are shown only on
+  paid compute plans, so peak memory on the free instance was not measured.
+* **Argon2 login time.** The smoke test prints the sign-in time. Record it (Phase 06A: 2.47 to 2.67 s live, 0.05 to 0.06 s in CI).
+* **Client identification.** Hop counts 1 and 2 were tried on Render and did not work. The live service uses
+  `ROOTSENTINEL_CLIENT_IP_HEADER=True-Client-IP` with hops 0. After a deploy, run
+  `python -B scripts\smoke_public.py --base-url https://<name>.onrender.com --probe-login-throttle --wait-seconds 65 --expect ...`
+  (the 65 s wait comes first in every run):
+  normal `--expect limited`; `--spoof-mode true-client-ip --expect limited`; `--spoof-mode xff --expect limited`;
+  `--spoof-mode all --expect limited-or-rejected` (Cloudflare refuses a client-set `CF-Connecting-IP`, which prints
+  `EDGE-REJECTED (safe: no login attempts reached the app)`); from a second network `--expect unlimited`.
+  A 429 whose code is not `LOGIN_RATE_LIMIT_CLIENT` (global or account limit) is inconclusive, not a pass. If a spoofed run that
+  reaches the app is not limited, the header is not trustworthy: remove it (back to hops 0). The second-network run is weak
+  evidence: after the 65 s wait it would also pass if every request shared one bucket. The app log line
+  `client IP header missing or invalid; shared unidentified bucket used` shows when the header is absent or invalid. The probe uses
+  the login limit for about a minute: never run it during the demo. A classroom behind one NAT shares one address, so up to 15
+  sign-ins per minute per address and 30 per minute overall apply however this is set.
 
 ### Deploy policy: main only, after checks, no pushes on demo day
 

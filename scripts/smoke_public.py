@@ -12,12 +12,17 @@ fail (single use), (5) submit the protected fixture, expect BLOCK and that relea
 ``--probe-login-throttle`` is a separate mode for checking how the deployed app identifies clients
 (ROOTSENTINEL_CLIENT_IP_HEADER or ROOTSENTINEL_TRUSTED_PROXY_HOPS): it sends 16 wrong-password sign-ins
 with unique user names (no account is touched) and prints only the HTTP status codes.
-``--spoof-client-ip-headers`` adds a random forged True-Client-IP, CF-Connecting-IP and X-Forwarded-For
-to every request (``--spoof-forwarded`` forges only X-Forwarded-For). ``--expect limited`` (fifteen 401
-then a PER-CLIENT 429, error code LOGIN_RATE_LIMIT_CLIENT) or ``--expect unlimited`` (sixteen 401) makes
-the exit status nonzero unless the codes match. A 429 from the global limit (LOGIN_RATE_LIMIT_GLOBAL) or
-any other code is INCONCLUSIVE, never a pass (exit 2). When client identification works: one network
-gives fifteen 401 then a per-client 429, both normally and spoofed; a second network gives sixteen 401. The limiter windows are 60 s and there is also a global limit of 30
+``--spoof-mode {all,true-client-ip,cf-connecting-ip,xff}`` adds random forged client-address headers to
+every request (``--spoof-client-ip-headers`` is the old name for ``all``, ``--spoof-forwarded`` for ``xff``).
+Every response is classified as coming from the app (JSON error envelope) or refused at the edge
+(Cloudflare text/HTML error, ``Server: cloudflare``, ``cf-ray``); only the status, the source and the app
+error code or Cloudflare error number are printed, never a body. ``--expect limited`` (fifteen 401 then a
+PER-CLIENT 429, error code LOGIN_RATE_LIMIT_CLIENT), ``--expect unlimited`` (sixteen 401) or ``--expect
+limited-or-rejected`` (the limited pattern, or every request refused at the edge: "EDGE-REJECTED (safe: no
+login attempts reached the app)") makes the exit status nonzero unless the result matches. A 429 from the
+global limit (LOGIN_RATE_LIMIT_GLOBAL) or any other code is INCONCLUSIVE, never a pass (exit 2). When client
+identification works: one network gives fifteen 401 then a per-client 429, both normally and with each spoofed
+header the edge lets through; a second network gives sixteen 401. The limiter windows are 60 s and there is also a global limit of 30
 attempts per minute, so wait at least 65 s before every probe run (``--wait-seconds 65``), otherwise
 the earlier run's attempts change the result. It uses up the login limit for about a minute, so never
 run it during a demo.
@@ -35,6 +40,7 @@ import hashlib
 import http.client
 import json
 from pathlib import Path
+import re
 import sys
 import time
 from urllib.parse import urlsplit
@@ -111,45 +117,92 @@ def warm_up(gateway: Gateway, limit: float) -> bool:
 
 PER_CLIENT_LIMIT = "LOGIN_RATE_LIMIT_CLIENT"
 PROBE_EXPECTATIONS = {"limited": [401] * 15 + [429], "unlimited": [401] * 16}
+# limited-or-rejected: the "limited" pattern, or every request refused at the edge before it reached the app.
+EXPECT_CHOICES = sorted([*PROBE_EXPECTATIONS, "limited-or-rejected"])
+EDGE_REJECTED = "EDGE-REJECTED (safe: no login attempts reached the app)"
+
+# Which forged client-address headers each --spoof-mode sends (RFC 5737 documentation ranges, new values per request).
+SPOOF_HEADERS = {
+    "true-client-ip": ("True-Client-IP",),
+    "cf-connecting-ip": ("CF-Connecting-IP",),
+    "xff": ("X-Forwarded-For",),
+    "all": ("True-Client-IP", "CF-Connecting-IP", "X-Forwarded-For"),
+}
+SPOOF_PREFIX = {"True-Client-IP": "198.51.100", "CF-Connecting-IP": "192.0.2", "X-Forwarded-For": "203.0.113"}
+SPOOF_DESCRIPTION = {None: "no forged headers", "true-client-ip": "spoofed True-Client-IP", "cf-connecting-ip": "spoofed CF-Connecting-IP",
+                     "xff": "spoofed X-Forwarded-For", "all": "spoofed True-Client-IP, CF-Connecting-IP and X-Forwarded-For"}
 
 
-def forged_headers(spoof_forwarded: bool, spoof_client_ip: bool) -> dict | None:
-    """Random documentation-range addresses (RFC 5737), a new set for every request."""
-    def address(prefix):
-        return f"{prefix}.{random.randint(1, 254)}"
-    extra = {}
-    if spoof_forwarded or spoof_client_ip:
-        extra["X-Forwarded-For"] = address("203.0.113")
-    if spoof_client_ip:
-        extra["True-Client-IP"], extra["CF-Connecting-IP"] = address("198.51.100"), address("192.0.2")
-    return extra or None
+def forged_headers(mode: str | None) -> dict | None:
+    """Random documentation-range addresses, a new set for every request; None when nothing is forged."""
+    if mode is None:
+        return None
+    return {name: f"{SPOOF_PREFIX[name]}.{random.randint(1, 254)}" for name in SPOOF_HEADERS[mode]}
 
 
-def probe_login_throttle(gateway: Gateway, spoof_forwarded: bool, spoof_client_ip: bool, expect: str | None, wait: float) -> int:
+def classify(headers, body: bytes) -> tuple[str, str | None]:
+    """("app", error code) when the RootSentinel API produced the response, otherwise ("edge", detail).
+
+    The app always answers /api/v1 with a JSON error envelope (Render also adds x-render-origin-server, which
+    is not relied on here). A non-JSON answer (Cloudflare's text/plain or HTML error page, with Server: cloudflare
+    and a cf-ray id) means the request was refused before it reached the app. The detail is only the
+    Cloudflare error number, never the body.
+    """
+    if "json" in (header(headers, "content-type") or "").lower():
+        try:
+            parsed = json.loads(body)
+        except ValueError:
+            parsed = None
+        error = parsed.get("error") if isinstance(parsed, dict) else None
+        return "app", error.get("code") if isinstance(error, dict) else None
+    match = re.search(rb"error(?: code)?:?\s*(\d{3,5})", body or b"", re.IGNORECASE)
+    server = header(headers, "server") or "?"
+    ray = "cf-ray" if header(headers, "cf-ray") else "no cf-ray"
+    return "edge", f"server={server}, {ray}, cloudflare error {match.group(1).decode() if match else 'unknown'}"
+
+
+def evaluate_probe(codes: list[int], sources: list[str], errors: list, expect: str | None) -> tuple[int, str]:
+    """Exit status and verdict line for one probe run (pure, so it can be unit-tested)."""
+    if codes and all(source == "edge" for source in sources):
+        if expect == "limited-or-rejected":
+            return 0, "PASS  " + EDGE_REJECTED
+        return (0 if expect is None else 1), ("" if expect is None else "FAIL  ") + EDGE_REJECTED + (
+            f"; does NOT match --expect {expect}" if expect else "")
+    if expect is None:
+        return 0, ""
+    if any(source == "edge" for source in sources):
+        return 1, "FAIL  some requests were refused at the edge and others reached the app; rerun after 65 s"
+    if any(c == 429 and e != PER_CLIENT_LIMIT for c, e in zip(codes, errors)):
+        return 2, "INCONCLUSIVE  a 429 came from a limit other than the per-client one (global or account); wait 65 s and rerun"
+    pattern = "limited" if expect == "limited-or-rejected" else expect
+    matched = codes == PROBE_EXPECTATIONS[pattern]
+    return (0 if matched else 1), f"{'PASS' if matched else 'FAIL'}  observed pattern {'matches' if matched else 'does NOT match'} --expect {expect}"
+
+
+def probe_login_throttle(gateway: Gateway, spoof_mode: str | None, expect: str | None, wait: float) -> int:
     if wait > 0:
         print(f"waiting {wait:.0f} s so the previous probe's 60 s limiter windows have expired")
         time.sleep(wait)
-    codes, errors = [], []
+    codes, sources, errors = [], [], []
     for index in range(16):
-        extra = forged_headers(spoof_forwarded, spoof_client_ip)
-        status, _, body = gateway.json("POST", "/api/v1/auth/login", json_body={"username": f"probe-{random.randrange(10**9)}-{index}", "password": "wrong-password-value"}, extra=extra)
+        status, headers, data = gateway.call("POST", "/api/v1/auth/login", json_body={"username": f"probe-{random.randrange(10**9)}-{index}", "password": "wrong-password-value"}, extra=forged_headers(spoof_mode))
+        source, detail = classify(headers, data)
         codes.append(status)
-        errors.append(((body or {}).get("error") or {}).get("code") if isinstance(body, dict) else None)
-    mode = "spoofed True-Client-IP, CF-Connecting-IP and X-Forwarded-For" if spoof_client_ip else "spoofed X-Forwarded-For" if spoof_forwarded else "no forged headers"
-    print(f"login probe ({mode}) status codes:", " ".join(str(c) for c in codes))
+        sources.append(source)
+        errors.append(detail if source == "app" else None)
+        print(f"  #{index + 1:<2} {status} {source:4} {detail or ''}")
+    print(f"login probe ({SPOOF_DESCRIPTION[spoof_mode]}) status codes:", " ".join(str(c) for c in codes))
+    print(f"responses from the app: {sources.count('app')}, refused at the edge: {sources.count('edge')}")
     limited = sorted({e for c, e in zip(codes, errors) if c == 429 and e})
     if limited:
         print("429 error codes:", ", ".join(limited))
     print("expected when client identification works: from one network fifteen 401 then a per-client 429 "
-          "(LOGIN_RATE_LIMIT_CLIENT), normally AND spoofed; from a second network (after the 65 s wait) sixteen 401")
-    if expect is None:
-        return 0
-    if any(c == 429 and e != PER_CLIENT_LIMIT for c, e in zip(codes, errors)):
-        print("INCONCLUSIVE  a 429 came from a limit other than the per-client one (global or account); wait 65 s and rerun")
-        return 2
-    matched = codes == PROBE_EXPECTATIONS[expect]
-    print(f"{'PASS' if matched else 'FAIL'}  observed pattern {'matches' if matched else 'does NOT match'} --expect {expect}")
-    return 0 if matched else 1
+          "(LOGIN_RATE_LIMIT_CLIENT), normally AND with every spoofed header the edge lets through; "
+          "from a second network (after the 65 s wait) sixteen 401")
+    status, verdict = evaluate_probe(codes, sources, errors, expect)
+    if verdict:
+        print(verdict)
+    return status
 
 
 def main(argv=None) -> int:
@@ -158,21 +211,27 @@ def main(argv=None) -> int:
     parser.add_argument("--origin", help="the configured public origin (default: --base-url)")
     parser.add_argument("--username")
     parser.add_argument("--probe-login-throttle", action="store_true", help="probe client identification instead of running the smoke test")
-    parser.add_argument("--spoof-forwarded", action="store_true", help="with the probe: send a random X-Forwarded-For each time")
-    parser.add_argument("--spoof-client-ip-headers", action="store_true",
-                        help="with the probe: send random True-Client-IP, CF-Connecting-IP and X-Forwarded-For each time")
-    parser.add_argument("--expect", choices=sorted(PROBE_EXPECTATIONS), help="with the probe: exit 1 unless the codes match "
-                        "(limited: fifteen 401 then 429; unlimited: sixteen 401)")
+    parser.add_argument("--spoof-mode", choices=sorted(SPOOF_HEADERS),
+                        help="with the probe: forge these client-address headers on every request (all = all three)")
+    parser.add_argument("--spoof-forwarded", action="store_true", help="with the probe: same as --spoof-mode xff")
+    parser.add_argument("--spoof-client-ip-headers", action="store_true", help="with the probe: same as --spoof-mode all")
+    parser.add_argument("--expect", choices=EXPECT_CHOICES, help="with the probe: exit 1 unless the codes match "
+                        "(limited: fifteen 401 then 429; unlimited: sixteen 401; limited-or-rejected: limited, "
+                        "or every request refused at the edge)")
     parser.add_argument("--wait-seconds", type=float, default=0, help="with the probe: wait this long first (use 65 between runs)")
     parser.add_argument("--password-file", type=Path, help="one-line file; otherwise a hidden prompt is used")
     parser.add_argument("--warmup-seconds", type=float, default=240)
     parser.add_argument("--no-frontend", action="store_true", help="do not expect the built frontend at /")
     args = parser.parse_args(argv)
     origin = (args.origin or args.base_url).rstrip("/")
+    legacy = [mode for flag, mode in ((args.spoof_client_ip_headers, "all"), (args.spoof_forwarded, "xff")) if flag]
+    if len(legacy) + bool(args.spoof_mode) > 1:
+        parser.error("use only one of --spoof-mode, --spoof-forwarded and --spoof-client-ip-headers")
+    spoof_mode = args.spoof_mode or (legacy[0] if legacy else None)
     if args.probe_login_throttle:
-        return probe_login_throttle(Gateway(args.base_url, origin), args.spoof_forwarded, args.spoof_client_ip_headers, args.expect, args.wait_seconds)
-    if args.spoof_forwarded or args.spoof_client_ip_headers or args.expect:
-        parser.error("--spoof-forwarded, --spoof-client-ip-headers and --expect only apply with --probe-login-throttle")
+        return probe_login_throttle(Gateway(args.base_url, origin), spoof_mode, args.expect, args.wait_seconds)
+    if spoof_mode or args.expect:
+        parser.error("--spoof-mode, --spoof-forwarded, --spoof-client-ip-headers and --expect only apply with --probe-login-throttle")
     if not args.username:
         parser.error("--username is required")
     password = args.password_file.read_text(encoding="utf-8").strip() if args.password_file else getpass.getpass("Password: ")

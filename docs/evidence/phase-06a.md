@@ -1,10 +1,13 @@
 # Phase 06A verification record: hosted presenter demo
 
-Status: **deployed and smoke-tested (15 of 15 checks) at https://rootsentinel-dlp.onrender.com. Per-client login throttling is
-NOT yet working on the host**: hop counts 1 and 2 failed, and the new single-address header option is **LIVE VERIFICATION PENDING**
-until the Part B probe results are added. Deploy logs, plan limits, cold-start boot times and environment variable names were read
-from the Render and Neon dashboards. Peak memory, Neon scale-to-zero and whether a card is required are still not verified; the
-reasons are given below.
+Status: **deployed and smoke-tested at https://rootsentinel-dlp.onrender.com** (commit `b2abe44`, all checks PASS on
+2026-11-09). Hop counts 1 and 2 failed; the single-address header option (`ROOTSENTINEL_CLIENT_IP_HEADER=True-Client-IP`, hops 0)
+is **kept**: live probes show that a forged `True-Client-IP` or `X-Forwarded-For` cannot choose its own login bucket (fifteen 401
+then `LOGIN_RATE_LIMIT_CLIENT`) and that Cloudflare refuses a client-set `CF-Connecting-IP` before it reaches the app (403, error
+1000). That distinct real clients get distinct buckets rests on one weak second-network run and is **not proved** (see
+[Live results with the header option](#live-results-with-the-header-option-b2abe44)). Deploy logs, plan limits, cold-start boot
+times and environment variable names were read from the Render and Neon dashboards. Peak memory and Neon scale-to-zero are still not
+verified; the reasons are given below. No card was required by Render or Neon (Operator).
 
 Stage 2 branch: `chore/phase-06a-close` from `origin/main` at `569295aea10264db872d5ed2988ca10c2af670e7` (CI run `42576611571`,
 9 of 9 jobs). Stage 1 (local gates, before deployment) is kept unchanged at the end of this file. Procedure:
@@ -32,8 +35,9 @@ screenshots are kept in the repository.
 | Branch protection | ruleset `protect-main` (id 26833962), active on the default branch: no deletion, no non-fast-forward, 9 required checks: `backend (3.12)`, `backend (3.13)`, `browser`, `postgres`, `frontend`, `agent (3.12)`, `agent (3.13)`, `agent-windows`, `container` | GitHub API, 2026-11-09 |
 | Edge in front of Render | responses carry `Server: cloudflare`, a `CF-RAY` header, `rndr-id` and `x-render-origin-server: uvicorn` | Probe, `GET /`, 2026-11-09T10:26:51Z |
 | Health body | `{"status":"ok","mode":"local","release_configured":true}` | Probe, same time |
-| `ROOTSENTINEL_TRUSTED_PROXY_HOPS` | `render.yaml` sets `"0"`; the hop trials below changed it in the dashboard | `render.yaml`; Operator |
-| `ROOTSENTINEL_CLIENT_IP_HEADER` | not in `render.yaml` on purpose: the dashboard is the single source for it | this record |
+| `ROOTSENTINEL_TRUSTED_PROXY_HOPS` | `render.yaml` sets `"0"`; the hop trials below changed it in the dashboard; **0** for the live-results runs | `render.yaml`; Operator |
+| `ROOTSENTINEL_CLIENT_IP_HEADER` | not in `render.yaml` on purpose: the dashboard is the single source for it; **`True-Client-IP`** for the live-results runs | this record; Operator |
+| Live commit for the live-results runs | `b2abe44` (2026-11-09, about 12:10 to 12:30 UTC) | Operator |
 
 ## The two deploy failures
 
@@ -110,14 +114,14 @@ with `mode: local` and `release_configured: true` (table above).
 
 | Measurement | Value | Source and time |
 |---|---|---|
-| Sign-in time, live (Argon2id t=3, m=64 MiB, p=4) | 2.67 s | Operator, smoke test |
+| Sign-in time, live (Argon2id t=3, m=64 MiB, p=4) | 2.67 s (`569295a`); 2.47 s (`b2abe44`, run a) | Operator, smoke test |
 | Sign-in time, CI container | 0.05 s (earlier run); 0.06 s in run `42601238590` | Operator; CI log 2026-11-09T10:30:08Z |
-| Warm-up, warm service | 1.3 s | Operator, smoke test |
+| Warm-up, warm service | 1.3 s (`569295a`); 2.2 s (`b2abe44`, run a) | Operator, smoke test |
 | Cold start | see the next table | Probe |
 | Peak memory, 24 h and 10:27 to 11:22 UTC | **not verified**: the Render Metrics page shows only the limits; it says memory and CPU usage need a paid compute plan | Dashboard |
 | Plan memory and CPU | 512 MB and **0.15 CPU** (an earlier secondary source said 0.1 CPU) | Dashboard (Metrics page) |
 | Request logs | not available: the "Request logs" option is disabled on this plan | Dashboard (Logs page) |
-| Card required, Render / Neon | **pending, from operator** (billing pages are deliberately not browsed) | |
+| Card required, Render / Neon | **Render: no. Neon: no** (at sign-up; billing pages were deliberately not browsed) | Operator |
 | Image size, uncompressed | 224,987,716 bytes = 214.6 MiB (`du -sxb /` inside the image) | CI run `42601238590`, commit `fc5aae8` |
 | Image size, compressed content | 63,874,048 bytes (`docker save`, containerd image store) | CI run `42598215274`, commit `5126399` |
 | Image size budget | 258 MiB uncompressed = ceil(214.57 x 1.2), enforced in the `container` job | `.github/workflows/ci.yml` |
@@ -226,7 +230,69 @@ support the "Cloudflare in front" part only. Hop counting gives no reliable clie
 `rootsentinel-dlp.onrender.com` and overwrites `True-Client-IP` with the address it saw. Any path to the service that skips that
 edge lets a client choose its own key. A local test shows the risk: without an edge, a spoofed `True-Client-IP` on each request
 gives 16 x 401. The live spoofed probe is the deciding test. If it is not limited, the header is not trustworthy and must be removed
-(back to hops 0). **LIVE VERIFICATION PENDING.**
+(back to hops 0). Result: limited for every forged header the edge lets through (next section).
+
+### Live results with the header option (`b2abe44`)
+
+Deployed `b2abe44` with `ROOTSENTINEL_CLIENT_IP_HEADER=True-Client-IP` and `ROOTSENTINEL_TRUSTED_PROXY_HOPS=0`.
+
+**Operator runs, 2026-11-09 about 12:10 to 12:20 UTC (recorded as reported).**
+
+| Run | Command (base URL omitted) | Result | Exit |
+|---|---|---|---|
+| a | full smoke, `--username presenter-analyst` | all checks PASS; warm-up `/health` 2.2 s; Argon2id sign-in 2.47 s as ANALYST; 39 byte SHA-256 match; audit sequence 29 | 0 |
+| b | `--probe-login-throttle --wait-seconds 65 --expect limited` | 15 x 401 then 429 `LOGIN_RATE_LIMIT_CLIENT`, PASS | 0 |
+| c | same with `--spoof-client-ip-headers` (forged `True-Client-IP`, `CF-Connecting-IP`, `X-Forwarded-For`) | 16 x 403, no 401, no 429; script FAIL | 1 |
+| d | `--expect unlimited` after 65 s, from a claimed second network (public IP 182.191.130.172; the network switch was not confirmed) | 16 x 401, PASS | 0 |
+
+**Run d is weak evidence by design.** It ran after the 65 s wait, when the first network's window had already expired, so it would
+also give sixteen 401 if every request shared one bucket (for example the `unidentified` one) or came from the same network. It
+does not show that two real clients get two different keys.
+
+**Diagnosis of c (Probe, development machine, 2026-11-09).** Group 1: one fake-credential sign-in per variant at about
+12:24:50 to 12:24:56 UTC (user names `probe-<random>-<n>`, password `wrong-password-value`; no real credentials). Only metadata was
+kept, no bodies.
+
+| Forged header(s) | Status | `Server` | `cf-ray` | Content type | Code | `x-render-origin-server` | Reached the app |
+|---|---|---|---|---|---|---|---|
+| `True-Client-IP` only | 401 | cloudflare | yes | `application/json` | app `INVALID_CREDENTIALS` | uvicorn | yes |
+| `CF-Connecting-IP` only | 403 | cloudflare | yes | `text/plain; charset=UTF-8` | Cloudflare error 1000 | absent | **no** (edge) |
+| `X-Forwarded-For` only | 401 | cloudflare | yes | `application/json` | app `INVALID_CREDENTIALS` | uvicorn | yes |
+| all three | 403 | cloudflare | yes | `text/plain; charset=UTF-8` | Cloudflare error 1000 | absent | **no** (edge) |
+
+Group 2: the full 16-request probe with the new `--spoof-mode` (below) for each variant that reached the app, 65 s apart.
+
+| Variant | Window (UTC) | Codes | Source | Verdict |
+|---|---|---|---|---|
+| `--spoof-mode true-client-ip --expect limited` | 12:26:33 to 12:28:16 (65 s wait included) | 15 x 401 then 429 `LOGIN_RATE_LIMIT_CLIENT` | 16 app, 0 edge | PASS, exit 0 |
+| `--spoof-mode xff --expect limited` | 12:28:16 to 12:29:59 (65 s wait included) | 15 x 401 then 429 `LOGIN_RATE_LIMIT_CLIENT` | 16 app, 0 edge | PASS, exit 0 |
+
+Live sign-in requests sent for the diagnosis: 4 + 32 = 36.
+
+**Where the 403 came from.** Not from the app. The only app paths that can answer `POST /api/v1/auth/login` with 403 are in
+`RequestGuard.__call__` (`backend/app/api.py`): `PUBLIC_DEMO_NOT_READY` (mode not `local`) and `ORIGIN_REJECTED` (Origin differs
+from `ROOTSENTINEL_ORIGIN`). Neither looks at client-address headers, both answer with the JSON error envelope, and the login handler
+itself has no 403 (CSRF is checked only for authenticated mutations, `AuthService.authenticate`). The observed 403s are
+`text/plain`, carry Cloudflare's error number 1000 and lack `x-render-origin-server`, and the same request without
+`CF-Connecting-IP` reaches uvicorn. Cloudflare refuses a request that arrives with a client-set `CF-Connecting-IP` (its error 1000
+is described as "DNS points to prohibited IP"; the exact reason Cloudflare uses this code here is Cloudflare's and was not
+investigated). No behaviour was changed.
+
+**What the results show, and what they do not.**
+
+* A forged `True-Client-IP` cannot select its own bucket: sixteen different forged values still filled one 15-per-minute window.
+  Either Cloudflare overwrote the header, or the request carried a second copy and fell into the shared `unidentified` bucket. Both
+  are fail-closed for the limiter; the probe cannot tell them apart.
+* A forged `X-Forwarded-For` is ignored in header mode, as designed.
+* A client-set `CF-Connecting-IP` never reaches the app (edge 403), so it cannot influence anything.
+* **Not shown:** that two different real clients get two different keys. If every request were in the `unidentified` bucket, runs
+  b and Group 2 would look the same. The app logs `client IP header missing or invalid; shared unidentified bucket used (N
+  request(s) so far)` (logger `rootsentinel.client_ip`) at N = 1, 10, 100 and so on; its absence from the Render application logs
+  after these runs would show the header was present and valid. Those logs were **not read** in this step.
+
+**Decision: header mode is kept** (`True-Client-IP`, hops 0). The agreed criterion was met: the XFF-only forged run is limited and
+the edge rejects client-set CF headers; the forged `True-Client-IP` run is also limited. If the header ever stops arriving, the
+failure mode is the shared `unidentified` bucket (everyone shares 15 per minute), never a client choosing its own key.
 
 **What still protects sign-in if per-client throttling cannot be made to work (Code).** The global limit of 30 per minute; the
 5 per minute per user name limit, independent of addresses (which also lets anyone lock a known name out for a minute); at most two
@@ -235,9 +301,14 @@ known names. With no per-client key, one client can use up the global limit and 
 
 **Probe procedure.** `scripts/smoke_public.py --probe-login-throttle` with `--wait-seconds 65` before each run, because a run
 fills the per-client window for 60 s and three back-to-back runs would exceed the global limit of 30.
-`--spoof-client-ip-headers` forges random `True-Client-IP`, `CF-Connecting-IP` and `X-Forwarded-For` on every request.
-`--expect limited` passes only on fifteen 401 then a 429 with code `LOGIN_RATE_LIMIT_CLIENT`; `--expect unlimited` passes only on
-sixteen 401; any 429 with another code is reported as inconclusive (exit 2), never as a pass.
+`--spoof-mode {all,true-client-ip,cf-connecting-ip,xff}` forges random documentation-range addresses in those headers on every
+request (`--spoof-client-ip-headers` = `all`, `--spoof-forwarded` = `xff`, both still accepted). Each response is classified as
+**app** (JSON error envelope) or **edge** (anything else, for example Cloudflare's text/plain 403 with `Server: cloudflare` and
+`cf-ray`) and printed with only its status and the app error code or Cloudflare error number. `--expect limited` passes only on
+fifteen 401 then a 429 with code `LOGIN_RATE_LIMIT_CLIENT`; `--expect unlimited` passes only on sixteen 401; `--expect
+limited-or-rejected` passes on the limited pattern or when **every** request was refused at the edge, printed as
+`EDGE-REJECTED (safe: no login attempts reached the app)`. A mix of edge and app answers fails; any 429 with another code is
+inconclusive (exit 2), never a pass. With `cf-connecting-ip` or `all` on this host, use `--expect limited-or-rejected`.
 
 ## Security versus usability
 
@@ -246,6 +317,8 @@ sixteen 401; any 429 with another code is reported as inconclusive (exit 2), nev
   staggered. The cost was not lowered: it is what makes a stolen hash file expensive to attack.
 * **Shared addresses.** A class behind one NAT shares one client key (15 per minute) whatever identification is used, and all
   users share the global 30 per minute.
+* **Distinct real clients are not proved to get distinct keys** (run d is weak evidence; the `unidentified` log line was not
+  checked). If they all fall into one bucket, the effect is the same as one shared NAT.
 * **Visitor mode** remains out of scope. Whether to add an anonymous synthetic-only visitor mode is a Phase 06B decision.
 
 ## Hosting limitations
@@ -280,6 +353,17 @@ parsed with PyYAML and `actionlint` 1.7.12 exit 0. A mutation that disables head
 was run end to end against a real local uvicorn server: per-client 429 gives PASS or FAIL as expected, a global 429 gives
 INCONCLUSIVE (exit 2). Hosted CI on this branch: runs `42597528426` (`6206b52`), `42598215274` (`5126399`) and `42601238590`
 (`fc5aae8`), each 9 of 9 jobs successful.
+
+## Live-results changes and checks
+
+Branch `chore/phase-06a-live-results` from `origin/main` at `b2abe44eefd90464927131b1b292b0cf8a3200c6`. No application behaviour
+changed.
+
+| File | Purpose |
+|---|---|
+| `scripts/smoke_public.py` | `--spoof-mode`, app versus edge classification per response, `--expect limited-or-rejected` (EDGE-REJECTED); old flags kept |
+| `backend/tests/test_smoke_probe.py` | 26 tests with mocked responses (classification, every `--expect` value, edge-only, mixed, global 429, headers per mode, CLI flags) |
+| `docs/deployment.md`, this file | results a to d, diagnosis, decision, plan resources, cold start split, card answers |
 
 ---
 
