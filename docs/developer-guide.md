@@ -14,6 +14,17 @@ history, inspect divergence before later synchronization, and stop on unexpected
 remote content. Do not force push, force checkout or overwrite unrelated files.
 Licensing remains a team decision.
 
+## Repository rules
+
+Never commit original instructor DOCX files, real protected payloads, secrets, runtime databases, or screenshots containing
+sensitive machine paths. Dependencies and build output are ignored by Git, but Git-ignore does not stop OneDrive syncing them.
+
+The course requires exactly three students. Named ownership and actual contribution history are recorded by the team in the
+final report; neither is invented in this repository. No license has been chosen yet, so no open-source license is implied.
+
+The local workbench and dev server bind to loopback; they are not a production deployment. Phase history, CI runs and published
+commits are indexed in [evidence/README.md](evidence/README.md).
+
 ## Toolchain
 
 - Python 3.12 or 3.13; local validation used Python 3.12.12 (unittest) and 3.13.4 (pytest).
@@ -116,6 +127,11 @@ producer paths, are what the gateway scans and delivers. Test the agent with `py
 (it needs the backend test dependencies for the real-gateway tests) and `python -B scripts/demo_phase05.py`.
 
 ## Troubleshooting and limitations
+
+If pytest errors at setup with `PermissionError: [WinError 5] Access is denied` on `%TEMP%\pytest-of-<user>`, that folder was
+left behind with permissions the current account cannot read. The tests themselves are fine: point pytest at another
+temporary folder, for example `python -m pytest --basetemp "$env:LOCALAPPDATA\RootSentinel\pytest-tmp"`, or have the account
+that owns the folder remove it.
 
 Network-restricted environments may support `npm ci --offline` when every locked
 tarball is cached. The implementation session generated the npm lock from cached
