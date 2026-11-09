@@ -218,7 +218,9 @@ jobs:
         run: |
           set -euo pipefail
           # The server's startup environment (PID 1 is the uvicorn process after the entrypoint's exec chain).
-          server_env="$(docker exec rootsentinel sh -c "tr '\0' '\n' < /proc/1/environ")"
+          # Read it as uid 10001: container root lacks CAP_SYS_PTRACE (Docker drops it by default), which reading
+          # another uid's /proc/1/environ requires, while the same uid may read its own process.
+          server_env="$(docker exec --user 10001:10001 rootsentinel sh -c "tr '\0' '\n' < /proc/1/environ")"
           server_home="$(sed -n 's/^HOME=//p' <<< "$server_env")"
           echo "server HOME: $server_home"
           test "$server_home" = "/nonexistent"
