@@ -168,8 +168,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ROOTSENTINEL_CI_ORIGIN: https://rootsentinel-ci.example
-      # Uncompressed image size budget in MiB (measured size x 1.2, rounded up). Empty = report only, not enforced.
-      IMAGE_SIZE_BUDGET_MIB: ''
+      # Uncompressed image size budget in MiB: ceil(measured x 1.2). Measured 224987716 bytes (214.6 MiB, du -sxb /)
+      # in run 42601238590 on fc5aae8; ceil(214.57 x 1.2) = 258.
+      IMAGE_SIZE_BUDGET_MIB: '258'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -86,7 +86,8 @@ root only to copy the two secret files to private 0600 paths, then migrates, run
 | `ROOTSENTINEL_MODE` | operational API enabled | `local` |
 | `ROOTSENTINEL_ORIGIN` | exact public origin, https, no trailing slash | `https://<service>.onrender.com` |
 | `ROOTSENTINEL_DATABASE_URL` | Neon connection, driver prefix `postgresql+psycopg://` | set in the dashboard only |
-| `ROOTSENTINEL_TRUSTED_PROXY_HOPS` | `X-Forwarded-For` entry taken N from the right; 0 ignores the header | `0` until measured |
+| `ROOTSENTINEL_TRUSTED_PROXY_HOPS` | `X-Forwarded-For` entry taken N from the right; 0 ignores the header | `0` (hop counting did not work on Render, see the Phase 06A evidence) |
+| `ROOTSENTINEL_CLIENT_IP_HEADER` | one header holding exactly one client address, set by the edge (for example `True-Client-IP`); empty = off. Cannot be combined with nonzero hops (startup refuses) | dashboard only, not in `render.yaml`; live verification pending |
 | `ROOTSENTINEL_EXTRA_HOSTS` | exact additional Host values (for example a custom domain), no wildcards | unset |
 | `ROOTSENTINEL_SESSION_SECONDS` / `RETENTION_SECONDS` | 60-86400 / 1-900 | 3600 / 900 |
 | `ROOTSENTINEL_MAX_UPLOAD_BYTES` | 1024-10485760 | 1048576 (1 MiB) |
@@ -96,6 +97,11 @@ The defaults of every new setting reproduce the earlier local behavior exactly. 
 `X-Forwarded-For` entry that many places from the right; this is only safe when the app is reachable exclusively through that many
 proxies that each append their peer's address. A header with too few entries or an unparsable value falls back to the socket peer.
 `X-Forwarded-Proto` is ignored (cookies set `Secure` explicitly). `uvicorn` still runs with `--no-proxy-headers`.
+
+With `ROOTSENTINEL_CLIENT_IP_HEADER` set, `X-Forwarded-For` is ignored and the login limiter keys on that one header, but only when
+it holds exactly one valid IPv4 or IPv6 address (IPv4-mapped IPv6 is normalised). A missing, repeated, list-valued or invalid header
+puts the request in one shared `unidentified` bucket; the raw value is never logged. This is safe only if the edge overwrites that
+header on every request that can reach the service. Run the throttle probe with `--spoof-client-ip-headers` to check it.
 
 ### Secrets: files and hashes, never plaintext
 
@@ -154,12 +160,14 @@ The dashboards change; where this list and the vendor page disagree, the vendor 
 * **Memory.** In the Render dashboard's metrics, note the peak memory during the smoke test, and during several simultaneous
   sign-ins. The free instance is small (512 MB and 0.1 CPU according to a secondary source; not confirmed in Render's own page).
 * **Argon2 login time.** The smoke test prints the sign-in time. Record it.
-* **Trusted proxy hops.** Set `ROOTSENTINEL_TRUSTED_PROXY_HOPS=1`, redeploy, and from two networks run
-  `python -B scripts\smoke_public.py --base-url https://<name>.onrender.com --probe-login-throttle` (laptop Wi-Fi, then a phone on
-  mobile data; add `--spoof-forwarded` for a third run). The right value gives fifteen 401 then a 429 from the first network, no
-  429 from the second, and the same limit for the spoofed run. If the second network is also limited, try 2, then 3. Leave 0 if
-  none works. The probe uses the login limit for about a minute: never run it during the demo. A classroom behind one NAT shares one
-  address, so up to 15 sign-ins per minute per address and 30 per minute overall apply however this is set.
+* **Client identification.** Hop counts 1 and 2 were tried on Render and did not work (Phase 06A evidence). The next candidate is
+  `ROOTSENTINEL_CLIENT_IP_HEADER=True-Client-IP` with hops 0. After the deploy, wait 65 s before each run of
+  `python -B scripts\smoke_public.py --base-url https://<name>.onrender.com --probe-login-throttle --wait-seconds 65 --expect ...`:
+  normal (`--expect limited`), then `--spoof-client-ip-headers --expect limited`, then from a second network `--expect unlimited`.
+  A 429 whose code is not `LOGIN_RATE_LIMIT_CLIENT` (global or account limit) is inconclusive, not a pass. If the spoofed run is not
+  limited, the header is not trustworthy: remove it. The probe uses the login limit for about a minute: never run it during the
+  demo. A classroom behind one NAT shares one address, so up to 15 sign-ins per minute per address and 30 per minute overall apply
+  however this is set.
 
 ### Deploy policy: main only, after checks, no pushes on demo day
 

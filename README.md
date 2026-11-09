@@ -14,7 +14,8 @@ Phase 05 adds the local staging gateway agent: a separate, standard-library proc
 watches a staging directory and delivers a file to its outbound directory only after the
 gateway persisted ALLOW and released verified bytes. **Local browser workflow and the
 local staging agent are implemented; hosted CI for Phase 05 passed on the candidate head (run 42268818788, all 8 jobs; see the evidence).
-Public deployment remains future work.**
+Phase 06A is deployed as an authenticated presenter demo at https://rootsentinel-dlp.onrender.com (Render free tier plus Neon;
+see the [Phase 06A evidence](docs/evidence/phase-06a.md)). There is no anonymous visitor mode.**
 
 The unchanged cryptographic core uses Python `hashlib`. The backend uses FastAPI,
 SQLAlchemy/Alembic and Argon2id. Every operational view displays actual backend results.
@@ -102,6 +103,7 @@ python -B scripts/demo_phase05.py         # end-to-end demo on a disposable gate
 - [Phase 04 verification evidence](docs/evidence/phase-04.md)
 - [Staging agent specification, provisioning and recovery](docs/staging-spec.md)
 - [Phase 05 verification evidence](docs/evidence/phase-05.md)
+- [Phase 06A deployment evidence](docs/evidence/phase-06a.md)
 
 ## Repository status and contributions
 
@@ -151,11 +153,12 @@ and on Windows the permission separation between staging and outbound is an oper
 [specification](docs/staging-spec.md) (including exact provisioning commands), the
 [threat model](docs/threat-model.md) and the [evidence](docs/evidence/phase-05.md).
 
-## Phase 06A — hosted presenter demo (prepared, not deployed)
+## Phase 06A: hosted presenter demo (deployed)
 
 A `Dockerfile`, `render.yaml`, an unprivileged entrypoint, an idempotent `bootstrap` (accounts from a file of password hashes, one
 synthetic protected asset) and `scripts/smoke_public.py` prepare a free-tier Render plus Neon deployment of the gateway with the
 frontend served from the same origin. Access is by operator-created accounts only; there is no anonymous or visitor mode, and
-`public_demo` still denies every API route. Nothing has been deployed and there are no deployed measurements yet. On a free tier
-the audit chain is tamper evident within one container lifetime only: checkpoints are lost on restart. See
+`public_demo` still denies every API route. It is deployed at https://rootsentinel-dlp.onrender.com; the measurements, the two deploy
+failures and the open client-identification question are in the evidence. On a free tier the audit chain is tamper evident within
+one container lifetime only: checkpoints are lost on restart, and the first request after idling waits for a cold start. See
 [deployment](docs/deployment.md) (including what you must do yourself) and the [evidence](docs/evidence/phase-06a.md).

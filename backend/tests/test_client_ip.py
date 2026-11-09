@@ -174,3 +174,25 @@ def test_the_client_limit_code_reaches_the_response(header_mode):
                                   headers={HEADER: "198.51.100.7"}) for i in range(16)]
     assert responses[15].status_code == 429
     assert responses[15].json() == {"error": {"code": "LOGIN_RATE_LIMIT_CLIENT", "outcome": "INDETERMINATE", "release_authorized": False}}
+
+
+def test_account_limit_is_identical_for_existing_and_nonexistent_names(system, credentials):
+    # The account bucket is keyed on the submitted name before any database lookup, so its 429 cannot
+    # reveal whether the account exists. Distinct client addresses keep the per-client limit out of the way.
+    with TestClient(create_app(header_settings(system)), base_url=ORIGIN, raise_server_exceptions=False) as client:
+        client.headers["origin"] = ORIGIN
+        outcomes = {}
+        for offset, name in ((0, "employee"), (10, "no-such-account")):
+            codes = [client.post("/api/v1/auth/login", json={"username": name, "password": "wrong-password-value"},
+                                 headers={HEADER: f"198.51.100.{offset + i + 1}"}) for i in range(5)]
+            assert [r.status_code for r in codes] == [401] * 5
+            limited = client.post("/api/v1/auth/login", json={"username": name, "password": "wrong-password-value"},
+                                  headers={HEADER: f"198.51.100.{offset + 9}"})
+            outcomes[name] = (limited.status_code, limited.json(), "set-cookie" in limited.headers)
+        assert outcomes["employee"] == outcomes["no-such-account"] == (
+            429, {"error": {"code": "LOGIN_RATE_LIMIT_ACCOUNT", "outcome": "INDETERMINATE", "release_authorized": False}}, False)
+        # Even the correct password is refused while the window is full: no oracle for a valid guess.
+        correct = client.post("/api/v1/auth/login", json={"username": "employee", "password": credentials[0]}, headers={HEADER: "198.51.100.30"})
+        assert correct.status_code == 429 and correct.json()["error"]["code"] == "LOGIN_RATE_LIMIT_ACCOUNT"
+        # Non-canonical spellings are rejected before the limiter, so they cannot open a second bucket for the same account.
+        assert client.post("/api/v1/auth/login", json={"username": "Employee", "password": "x"}, headers={HEADER: "198.51.100.31"}).status_code == 422
