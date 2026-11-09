@@ -138,3 +138,39 @@ def test_uvicorn_never_rewrites_the_client_address_from_proxy_headers():
     entrypoint = (REPOSITORY / "docker" / "entrypoint.sh").read_text(encoding="utf-8").replace("\r\n", "\n").replace("\\\n", " ")
     starts = re.findall(r"python -m uvicorn[^\n]*", entrypoint)
     assert len(starts) == 2 and all("--no-proxy-headers" in start and "--forwarded-allow-ips" not in start for start in starts)
+
+
+# ---------------------------------------------------------------------------------------------- 429 codes
+def test_each_login_limit_has_its_own_stable_code():
+    from app.auth import LoginLimiter
+    from app.errors import DomainError
+
+    def tripped(limiter, peer, user):
+        with pytest.raises(DomainError) as error:
+            limiter.check(peer, user)
+        return error.value.code, error.value.status
+
+    clock = [0]
+    account = LoginLimiter(lambda: clock[0])
+    for i in range(5):
+        account.check(f"10.0.0.{i}", "same-user")
+    assert tripped(account, "10.0.0.9", "same-user") == ("LOGIN_RATE_LIMIT_ACCOUNT", 429)
+
+    client = LoginLimiter(lambda: clock[0])
+    for i in range(15):
+        client.check("10.0.0.1", f"user-{i}")
+    assert tripped(client, "10.0.0.1", "fresh") == ("LOGIN_RATE_LIMIT_CLIENT", 429)
+
+    everyone = LoginLimiter(lambda: clock[0])
+    for i in range(30):
+        everyone.check(f"10.0.1.{i}", f"user-{i}")
+    assert tripped(everyone, "10.0.2.1", "fresh") == ("LOGIN_RATE_LIMIT_GLOBAL", 429)
+    clock[0] = 61
+    everyone.check("10.0.2.1", "fresh")                                       # windows still expire after 60 s
+
+
+def test_the_client_limit_code_reaches_the_response(header_mode):
+    responses = [header_mode.post("/api/v1/auth/login", json={"username": f"nobody-{i}", "password": "wrong-password-value"},
+                                  headers={HEADER: "198.51.100.7"}) for i in range(16)]
+    assert responses[15].status_code == 429
+    assert responses[15].json() == {"error": {"code": "LOGIN_RATE_LIMIT_CLIENT", "outcome": "INDETERMINATE", "release_authorized": False}}

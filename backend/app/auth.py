@@ -49,6 +49,10 @@ class LoginLimiter:
     def __init__(self, clock=time.monotonic):
         self.clock, self.lock, self.buckets = clock, Lock(), OrderedDict()
 
+    # Each bucket has its own stable 429 code (all start with LOGIN_RATE_LIMIT), so a probe can tell a
+    # per-client limit from the global one. The codes reveal nothing about whether an account exists.
+    CODES = {"global": "LOGIN_RATE_LIMIT_GLOBAL", "ip": "LOGIN_RATE_LIMIT_CLIENT", "user": "LOGIN_RATE_LIMIT_ACCOUNT"}
+
     def check(self, peer: str, username: str):
         keys = [("global", 30), ("ip:" + digest(peer), 15), ("user:" + digest(username), 5)]
         with self.lock:
@@ -58,7 +62,7 @@ class LoginLimiter:
                 if current - start >= 60:
                     start, count = current, 0
                 if count >= limit:
-                    raise DomainError("LOGIN_RATE_LIMIT", 429)
+                    raise DomainError(self.CODES[key.split(":", 1)[0]], 429)
                 self.buckets[key] = (start, count + 1)
                 self.buckets.move_to_end(key)
             while len(self.buckets) > 2048:

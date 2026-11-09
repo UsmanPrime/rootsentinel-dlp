@@ -14,9 +14,10 @@ fail (single use), (5) submit the protected fixture, expect BLOCK and that relea
 with unique user names (no account is touched) and prints only the HTTP status codes.
 ``--spoof-client-ip-headers`` adds a random forged True-Client-IP, CF-Connecting-IP and X-Forwarded-For
 to every request (``--spoof-forwarded`` forges only X-Forwarded-For). ``--expect limited`` (fifteen 401
-then 429) or ``--expect unlimited`` (sixteen 401) makes the exit status nonzero when the codes differ.
-When client identification works: one network gives fifteen 401 then 429, both normally and spoofed;
-a second network gives sixteen 401. The limiter windows are 60 s and there is also a global limit of 30
+then a PER-CLIENT 429, error code LOGIN_RATE_LIMIT_CLIENT) or ``--expect unlimited`` (sixteen 401) makes
+the exit status nonzero unless the codes match. A 429 from the global limit (LOGIN_RATE_LIMIT_GLOBAL) or
+any other code is INCONCLUSIVE, never a pass (exit 2). When client identification works: one network
+gives fifteen 401 then a per-client 429, both normally and spoofed; a second network gives sixteen 401. The limiter windows are 60 s and there is also a global limit of 30
 attempts per minute, so wait at least 65 s before every probe run (``--wait-seconds 65``), otherwise
 the earlier run's attempts change the result. It uses up the login limit for about a minute, so never
 run it during a demo.
@@ -108,6 +109,7 @@ def warm_up(gateway: Gateway, limit: float) -> bool:
     return False
 
 
+PER_CLIENT_LIMIT = "LOGIN_RATE_LIMIT_CLIENT"
 PROBE_EXPECTATIONS = {"limited": [401] * 15 + [429], "unlimited": [401] * 16}
 
 
@@ -127,16 +129,24 @@ def probe_login_throttle(gateway: Gateway, spoof_forwarded: bool, spoof_client_i
     if wait > 0:
         print(f"waiting {wait:.0f} s so the previous probe's 60 s limiter windows have expired")
         time.sleep(wait)
-    codes = []
+    codes, errors = [], []
     for index in range(16):
         extra = forged_headers(spoof_forwarded, spoof_client_ip)
-        codes.append(gateway.json("POST", "/api/v1/auth/login", json_body={"username": f"probe-{random.randrange(10**9)}-{index}", "password": "wrong-password-value"}, extra=extra)[0])
+        status, _, body = gateway.json("POST", "/api/v1/auth/login", json_body={"username": f"probe-{random.randrange(10**9)}-{index}", "password": "wrong-password-value"}, extra=extra)
+        codes.append(status)
+        errors.append(((body or {}).get("error") or {}).get("code") if isinstance(body, dict) else None)
     mode = "spoofed True-Client-IP, CF-Connecting-IP and X-Forwarded-For" if spoof_client_ip else "spoofed X-Forwarded-For" if spoof_forwarded else "no forged headers"
     print(f"login probe ({mode}) status codes:", " ".join(str(c) for c in codes))
-    print("expected when client identification works: from one network fifteen 401 then 429, normally AND spoofed; "
-          "from a second network (after the 65 s wait) sixteen 401")
+    limited = sorted({e for c, e in zip(codes, errors) if c == 429 and e})
+    if limited:
+        print("429 error codes:", ", ".join(limited))
+    print("expected when client identification works: from one network fifteen 401 then a per-client 429 "
+          "(LOGIN_RATE_LIMIT_CLIENT), normally AND spoofed; from a second network (after the 65 s wait) sixteen 401")
     if expect is None:
         return 0
+    if any(c == 429 and e != PER_CLIENT_LIMIT for c, e in zip(codes, errors)):
+        print("INCONCLUSIVE  a 429 came from a limit other than the per-client one (global or account); wait 65 s and rerun")
+        return 2
     matched = codes == PROBE_EXPECTATIONS[expect]
     print(f"{'PASS' if matched else 'FAIL'}  observed pattern {'matches' if matched else 'does NOT match'} --expect {expect}")
     return 0 if matched else 1

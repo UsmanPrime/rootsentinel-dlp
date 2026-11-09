@@ -194,19 +194,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # With the containerd image store (used by the runner) .Size is the compressed content size, so the
-          # uncompressed size is measured as the byte length of `docker save` (an uncompressed tar of the layers).
-          inspect_bytes="$(docker image inspect --format '{{.Size}}' rootsentinel-hosted:ci)"
-          bytes="$(docker save rootsentinel-hosted:ci | wc -c)"
+          # The runner uses the containerd image store, where both `docker image inspect .Size` and `docker save`
+          # give the COMPRESSED layer content. The uncompressed size is the apparent size of the image's own
+          # filesystem: du -sxb / inside a throwaway container (-x skips /proc, /sys and /dev).
+          content_bytes="$(docker image inspect --format '{{.Size}}' rootsentinel-hosted:ci)"
+          bytes="$(docker run --rm --entrypoint sh rootsentinel-hosted:ci -c 'du -sxb /' | cut -f1)"
           mib=$(( (bytes + 1048575) / 1048576 ))
           {
             echo "### Hosted image size"
             echo ""
-            echo "Uncompressed size (byte length of docker save): ${bytes} bytes = ${mib} MiB (rounded up)."
-            echo "docker image inspect .Size (content size under the containerd store): ${inspect_bytes} bytes."
-            echo "Budget (IMAGE_SIZE_BUDGET_MIB): ${IMAGE_SIZE_BUDGET_MIB:-not set, report only}."
+            echo "Uncompressed (du -sxb / in the image): ${bytes} bytes = ${mib} MiB (rounded up)."
+            echo "Compressed content (docker image inspect .Size, containerd store): ${content_bytes} bytes."
+            echo "Budget (IMAGE_SIZE_BUDGET_MIB, uncompressed): ${IMAGE_SIZE_BUDGET_MIB:-not set, report only}."
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "image size: ${bytes} bytes = ${mib} MiB uncompressed (docker save); inspect .Size ${inspect_bytes} bytes; budget: ${IMAGE_SIZE_BUDGET_MIB:-not set}"
+          echo "image size: ${bytes} bytes = ${mib} MiB uncompressed (du -sxb /); compressed content ${content_bytes} bytes; budget: ${IMAGE_SIZE_BUDGET_MIB:-not set}"
           if [ -n "$IMAGE_SIZE_BUDGET_MIB" ] && [ "$mib" -gt "$IMAGE_SIZE_BUDGET_MIB" ]; then
             echo "::error::hosted image is ${mib} MiB, above the ${IMAGE_SIZE_BUDGET_MIB} MiB budget"
             exit 1
