@@ -11,7 +11,8 @@ fail (single use), (5) submit the protected fixture, expect BLOCK and that relea
 
 ``--probe-login-throttle`` is a separate mode for checking how the deployed app identifies clients
 (ROOTSENTINEL_CLIENT_IP_HEADER or ROOTSENTINEL_TRUSTED_PROXY_HOPS): it sends 16 wrong-password sign-ins
-with unique user names (no account is touched) and prints only the HTTP status codes.
+with unique user names (no account is touched; ``--attempts N`` changes the count, 1 to 30) and prints only the HTTP status codes
+and the UTC time of the first request and the last response.
 ``--spoof-mode {all,true-client-ip,cf-connecting-ip,xff}`` adds random forged client-address headers to
 every request (``--spoof-client-ip-headers`` is the old name for ``all``, ``--spoof-forwarded`` for ``xff``).
 Every response is classified as coming from the app (JSON error envelope) or refused at the edge
@@ -34,6 +35,7 @@ configured for; the cookie is attached manually, so the Secure flag does not mat
 Plain http is only allowed to loopback addresses.
 """
 import argparse
+from datetime import datetime, timezone
 import getpass
 import random
 import hashlib
@@ -116,10 +118,34 @@ def warm_up(gateway: Gateway, limit: float) -> bool:
 
 
 PER_CLIENT_LIMIT = "LOGIN_RATE_LIMIT_CLIENT"
-PROBE_EXPECTATIONS = {"limited": [401] * 15 + [429], "unlimited": [401] * 16}
+PER_CLIENT_WINDOW = 15   # backend/app/auth.py: 15 attempts per client key per 60 s
+GLOBAL_WINDOW = 30       # 30 attempts for everyone per 60 s; one probe run never exceeds it
+DEFAULT_ATTEMPTS = 16
+
+
+def expected_codes(expect: str, attempts: int) -> list[int]:
+    """limited: 401 until the per-client window is full, then 429; unlimited: every attempt 401."""
+    if expect == "unlimited":
+        return [401] * attempts
+    return [401] * min(attempts, PER_CLIENT_WINDOW) + [429] * max(0, attempts - PER_CLIENT_WINDOW)
+
+
+PROBE_EXPECTATIONS = {name: expected_codes(name, DEFAULT_ATTEMPTS) for name in ("limited", "unlimited")}
 # limited-or-rejected: the "limited" pattern, or every request refused at the edge before it reached the app.
 EXPECT_CHOICES = sorted([*PROBE_EXPECTATIONS, "limited-or-rejected"])
 EDGE_REJECTED = "EDGE-REJECTED (safe: no login attempts reached the app)"
+SHARED_BUCKET = ("SHARED-BUCKET  the first attempt was already limited (LOGIN_RATE_LIMIT_CLIENT): this run shares a client key "
+                 "with an earlier run inside the same 60 s window")
+
+
+def attempts_value(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be a whole number") from None
+    if not 1 <= value <= GLOBAL_WINDOW:
+        raise argparse.ArgumentTypeError(f"must be 1 to {GLOBAL_WINDOW}")
+    return value
 
 # Which forged client-address headers each --spoof-mode sends (RFC 5737 documentation ranges, new values per request).
 SPOOF_HEADERS = {
@@ -175,30 +201,43 @@ def evaluate_probe(codes: list[int], sources: list[str], errors: list, expect: s
     if any(c == 429 and e != PER_CLIENT_LIMIT for c, e in zip(codes, errors)):
         return 2, "INCONCLUSIVE  a 429 came from a limit other than the per-client one (global or account); wait 65 s and rerun"
     pattern = "limited" if expect == "limited-or-rejected" else expect
-    matched = codes == PROBE_EXPECTATIONS[pattern]
-    return (0 if matched else 1), f"{'PASS' if matched else 'FAIL'}  observed pattern {'matches' if matched else 'does NOT match'} --expect {expect}"
+    matched = codes == expected_codes(pattern, len(codes))
+    verdict = f"{'PASS' if matched else 'FAIL'}  observed pattern {'matches' if matched else 'does NOT match'} --expect {expect}"
+    if not matched and codes[0] == 429 and errors[0] == PER_CLIENT_LIMIT:
+        verdict += "\n" + SHARED_BUCKET
+    return (0 if matched else 1), verdict
 
 
-def probe_login_throttle(gateway: Gateway, spoof_mode: str | None, expect: str | None, wait: float) -> int:
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def probe_login_throttle(gateway: Gateway, spoof_mode: str | None, expect: str | None, wait: float,
+                         attempts: int = DEFAULT_ATTEMPTS) -> int:
     if wait > 0:
         print(f"waiting {wait:.0f} s so the previous probe's 60 s limiter windows have expired")
         time.sleep(wait)
     codes, sources, errors = [], [], []
-    for index in range(16):
+    first = last = None
+    for index in range(attempts):
+        if index == 0:
+            first = utc_now()
         status, headers, data = gateway.call("POST", "/api/v1/auth/login", json_body={"username": f"probe-{random.randrange(10**9)}-{index}", "password": "wrong-password-value"}, extra=forged_headers(spoof_mode))
         source, detail = classify(headers, data)
         codes.append(status)
         sources.append(source)
         errors.append(detail if source == "app" else None)
         print(f"  #{index + 1:<2} {status} {source:4} {detail or ''}")
-    print(f"login probe ({SPOOF_DESCRIPTION[spoof_mode]}) status codes:", " ".join(str(c) for c in codes))
+        last = utc_now()
+    print(f"first request sent at {first}, last response at {last} (UTC)")
+    print(f"login probe ({SPOOF_DESCRIPTION[spoof_mode]}, {attempts} attempts) status codes:", " ".join(str(c) for c in codes))
     print(f"responses from the app: {sources.count('app')}, refused at the edge: {sources.count('edge')}")
     limited = sorted({e for c, e in zip(codes, errors) if c == 429 and e})
     if limited:
         print("429 error codes:", ", ".join(limited))
     print("expected when client identification works: from one network fifteen 401 then a per-client 429 "
           "(LOGIN_RATE_LIMIT_CLIENT), normally AND with every spoofed header the edge lets through; "
-          "from a second network (after the 65 s wait) sixteen 401")
+          "from a second network inside the first network's 60 s window, 401 for every attempt")
     status, verdict = evaluate_probe(codes, sources, errors, expect)
     if verdict:
         print(verdict)
@@ -219,6 +258,8 @@ def main(argv=None) -> int:
                         "(limited: fifteen 401 then 429; unlimited: sixteen 401; limited-or-rejected: limited, "
                         "or every request refused at the edge)")
     parser.add_argument("--wait-seconds", type=float, default=0, help="with the probe: wait this long first (use 65 between runs)")
+    parser.add_argument("--attempts", type=attempts_value, help=f"with the probe: number of sign-in attempts, 1 to {GLOBAL_WINDOW} "
+                        f"(default {DEFAULT_ATTEMPTS}); limited expects 401 for the first {PER_CLIENT_WINDOW}, then 429")
     parser.add_argument("--password-file", type=Path, help="one-line file; otherwise a hidden prompt is used")
     parser.add_argument("--warmup-seconds", type=float, default=240)
     parser.add_argument("--no-frontend", action="store_true", help="do not expect the built frontend at /")
@@ -229,9 +270,10 @@ def main(argv=None) -> int:
         parser.error("use only one of --spoof-mode, --spoof-forwarded and --spoof-client-ip-headers")
     spoof_mode = args.spoof_mode or (legacy[0] if legacy else None)
     if args.probe_login_throttle:
-        return probe_login_throttle(Gateway(args.base_url, origin), spoof_mode, args.expect, args.wait_seconds)
-    if spoof_mode or args.expect:
-        parser.error("--spoof-mode, --spoof-forwarded, --spoof-client-ip-headers and --expect only apply with --probe-login-throttle")
+        return probe_login_throttle(Gateway(args.base_url, origin), spoof_mode, args.expect, args.wait_seconds,
+                                    args.attempts or DEFAULT_ATTEMPTS)
+    if spoof_mode or args.expect or args.attempts:
+        parser.error("--spoof-mode, --spoof-forwarded, --spoof-client-ip-headers, --expect and --attempts only apply with --probe-login-throttle")
     if not args.username:
         parser.error("--username is required")
     password = args.password_file.read_text(encoding="utf-8").strip() if args.password_file else getpass.getpass("Password: ")

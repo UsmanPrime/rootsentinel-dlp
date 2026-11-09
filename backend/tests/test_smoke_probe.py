@@ -47,9 +47,9 @@ class FakeGateway:
         return self.responses.pop(0)
 
 
-def run(responses, expect, mode=None):
+def run(responses, expect, mode=None, attempts=16):
     gateway = FakeGateway(responses)
-    return smoke.probe_login_throttle(gateway, mode, expect, 0), gateway
+    return smoke.probe_login_throttle(gateway, mode, expect, 0, attempts), gateway
 
 
 def test_classify_app_json_envelope():
@@ -138,7 +138,8 @@ def test_no_spoof_mode_sends_no_forged_headers():
 ])
 def test_cli_maps_old_and_new_spoof_flags(monkeypatch, argv, mode):
     seen = {}
-    monkeypatch.setattr(smoke, "probe_login_throttle", lambda gateway, m, expect, wait: seen.update(mode=m, expect=expect) or 0)
+    monkeypatch.setattr(smoke, "probe_login_throttle",
+                        lambda gateway, m, expect, wait, attempts: seen.update(mode=m, expect=expect) or 0)
     assert smoke.main(["--base-url", "https://rs-test.example", "--probe-login-throttle", "--expect", "limited-or-rejected", *argv]) == 0
     assert seen == {"mode": mode, "expect": "limited-or-rejected"}
 
@@ -150,8 +151,51 @@ def test_cli_maps_old_and_new_spoof_flags(monkeypatch, argv, mode):
     ["--expect", "limited-or-rejected", "--username", "x"],
     ["--probe-login-throttle", "--spoof-mode", "forwarded"],
     ["--probe-login-throttle", "--expect", "rejected"],
+    ["--attempts", "12", "--username", "x"],
+    ["--probe-login-throttle", "--attempts", "0"],
+    ["--probe-login-throttle", "--attempts", "31"],
+    ["--probe-login-throttle", "--attempts", "-1"],
+    ["--probe-login-throttle", "--attempts", "12.5"],
+    ["--probe-login-throttle", "--attempts", "many"],
 ])
 def test_cli_rejects_conflicting_or_misplaced_flags(argv):
     with pytest.raises(SystemExit) as exc:
         smoke.main(["--base-url", "https://rs-test.example", *argv])
     assert exc.value.code == 2
+
+
+@pytest.mark.parametrize("argv,attempts", [([], 16), (["--attempts", "1"], 1), (["--attempts", "12"], 12), (["--attempts", "30"], 30)])
+def test_cli_attempts_default_and_bounds(monkeypatch, argv, attempts):
+    seen = {}
+    monkeypatch.setattr(smoke, "probe_login_throttle",
+                        lambda gateway, m, expect, wait, n: seen.update(attempts=n) or 0)
+    assert smoke.main(["--base-url", "https://rs-test.example", "--probe-login-throttle", *argv]) == 0
+    assert seen == {"attempts": attempts}
+
+
+def test_attempts_sets_the_number_of_requests_and_scales_expectations(capsys):
+    status, gateway = run([app_response(401, "INVALID_CREDENTIALS")] * 12, "unlimited", attempts=12)
+    out = capsys.readouterr().out
+    assert status == 0 and len(gateway.sent) == 12 and "12 attempts" in out
+    assert "first request sent at 20" in out and "Z, last response at 20" in out
+    # 30 attempts from one network: fifteen 401, then fifteen per-client 429.
+    thirty = [app_response(401, "INVALID_CREDENTIALS")] * 15 + [app_response(429, "LOGIN_RATE_LIMIT_CLIENT")] * 15
+    assert run(thirty, "limited", attempts=30)[0] == 0
+    assert run(thirty, "unlimited", attempts=30)[0] == 1
+    # Fewer than 16 attempts can never show the limit, so "limited" is just all 401.
+    assert smoke.expected_codes("limited", 5) == [401] * 5
+    assert smoke.expected_codes("limited", 16) == smoke.PROBE_EXPECTATIONS["limited"] == [401] * 15 + [429]
+
+
+def test_second_network_shared_bucket_is_a_named_failure(capsys):
+    """Step B of the CF-Connecting-IP procedure: a shared bucket answers 429 from the first attempt."""
+    shared = [app_response(429, "LOGIN_RATE_LIMIT_CLIENT")] * 12
+    status, _ = run(shared, "unlimited", attempts=12)
+    out = capsys.readouterr().out
+    assert status == 1 and "FAIL  observed pattern does NOT match --expect unlimited" in out and "SHARED-BUCKET" in out
+    # Per-client keying on the second network: every attempt reaches Argon2id and gets 401.
+    status, _ = run([app_response(401, "INVALID_CREDENTIALS")] * 12, "unlimited", attempts=12)
+    assert status == 0 and "SHARED-BUCKET" not in capsys.readouterr().out
+    # A global-limit 429 stays inconclusive, never SHARED-BUCKET.
+    status, _ = run([app_response(429, "LOGIN_RATE_LIMIT_GLOBAL")] * 12, "unlimited", attempts=12)
+    assert status == 2 and "SHARED-BUCKET" not in capsys.readouterr().out

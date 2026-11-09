@@ -196,3 +196,57 @@ def test_account_limit_is_identical_for_existing_and_nonexistent_names(system, c
         assert correct.status_code == 429 and correct.json()["error"]["code"] == "LOGIN_RATE_LIMIT_ACCOUNT"
         # Non-canonical spellings are rejected before the limiter, so they cannot open a second bucket for the same account.
         assert client.post("/api/v1/auth/login", json={"username": "Employee", "password": "x"}, headers={HEADER: "198.51.100.31"}).status_code == 422
+
+
+# ---------------------------------------------------------------------------------------------- Phase 06A live-results facts
+def unidentified_counts(caplog):
+    return [r.getMessage() for r in caplog.records if r.name == "rootsentinel.client_ip"]
+
+
+def test_unidentified_counter_counts_every_http_request_not_only_logins(system, caplog):
+    """Health checks, pages and rejected requests without the header all advance the counter (logged at 1, 10, 100...)."""
+    with caplog.at_level(logging.WARNING, logger="rootsentinel.client_ip"):
+        with TestClient(create_app(header_settings(system)), base_url=ORIGIN, raise_server_exceptions=False) as client:
+            assert client.get("/health").status_code == 200
+            assert unidentified_counts(caplog) == ["client IP header missing or invalid; shared unidentified bucket used (1 request(s) so far)"]
+            for _ in range(4):
+                client.get("/health")
+            client.get("/api/v1/auth/me")                                                    # 401, no login
+            client.post("/api/v1/auth/logout", headers={"origin": "https://elsewhere.example"})   # 403 ORIGIN_REJECTED
+            for _ in range(3):
+                client.get("/health", headers={HEADER: "198.51.100.7"})                       # valid header: not counted
+            assert len(unidentified_counts(caplog)) == 1
+            for _ in range(3):
+                client.get("/health")                                                         # 8th to 10th unidentified request
+    assert unidentified_counts(caplog)[-1].endswith("(10 request(s) so far)")
+
+
+def test_unidentified_counter_starts_again_in_every_new_process(system, caplog):
+    with caplog.at_level(logging.WARNING, logger="rootsentinel.client_ip"):
+        for _ in range(2):
+            with TestClient(create_app(header_settings(system)), base_url=ORIGIN) as client:
+                client.get("/health")
+    assert [m.endswith("(1 request(s) so far)") for m in unidentified_counts(caplog)] == [True, True]
+
+
+def test_a_per_client_429_still_uses_a_global_slot_and_a_global_429_uses_none():
+    from app.auth import LoginLimiter
+    from app.errors import DomainError
+
+    clock = [0]
+    limiter = LoginLimiter(lambda: clock[0])
+
+    def code(peer, name):
+        try:
+            limiter.check(peer, name)
+            return None
+        except DomainError as error:
+            return error.code
+
+    assert [code("network-a", f"user-{i}") for i in range(16)] == [None] * 15 + ["LOGIN_RATE_LIMIT_CLIENT"]
+    # 16 of the global 30 are used, including the per-client 429: a second network has 14 left, not 15.
+    assert [code("network-b", f"other-{i}") for i in range(14)] == [None] * 14
+    assert code("network-b", "other-14") == "LOGIN_RATE_LIMIT_GLOBAL"
+    assert code("network-c", "other-15") == "LOGIN_RATE_LIMIT_GLOBAL"   # a global 429 does not extend anything
+    clock[0] = 60
+    assert code("network-b", "other-16") is None                        # every window is fixed: 60 s from its first attempt

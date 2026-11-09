@@ -1,10 +1,11 @@
 # Phase 06A verification record: hosted presenter demo
 
 Status: **deployed and smoke-tested at https://rootsentinel-dlp.onrender.com** (commit `b2abe44`, all checks PASS on
-2026-11-09). Hop counts 1 and 2 failed; the single-address header option (`ROOTSENTINEL_CLIENT_IP_HEADER=True-Client-IP`, hops 0)
-is **kept**: live probes show that a forged `True-Client-IP` or `X-Forwarded-For` cannot choose its own login bucket (fifteen 401
-then `LOGIN_RATE_LIMIT_CLIENT`) and that Cloudflare refuses a client-set `CF-Connecting-IP` before it reaches the app (403, error
-1000). That distinct real clients get distinct buckets rests on one weak second-network run and is **not proved** (see
+2026-11-09). **Per-client login throttling does NOT work on the host yet.** Hop counts 1 and 2 failed. Header mode with
+`ROOTSENTINEL_CLIENT_IP_HEADER=True-Client-IP` also does not work on Render: the Render application logs show the header missing at
+the origin, so every sign-in shares one `unidentified` bucket. The current live effect is **one shared 15-per-minute login bucket
+for all clients, plus the global 30 per minute**. Cloudflare refuses a client-set `CF-Connecting-IP` at the edge (403, error 1000).
+Client-IP decision: **under test: CF-Connecting-IP** (see
 [Live results with the header option](#live-results-with-the-header-option-b2abe44)). Deploy logs, plan limits, cold-start boot
 times and environment variable names were read from the Render and Neon dashboards. Peak memory and Neon scale-to-zero are still not
 verified; the reasons are given below. No card was required by Render or Neon (Operator).
@@ -230,7 +231,7 @@ support the "Cloudflare in front" part only. Hop counting gives no reliable clie
 `rootsentinel-dlp.onrender.com` and overwrites `True-Client-IP` with the address it saw. Any path to the service that skips that
 edge lets a client choose its own key. A local test shows the risk: without an edge, a spoofed `True-Client-IP` on each request
 gives 16 x 401. The live spoofed probe is the deciding test. If it is not limited, the header is not trustworthy and must be removed
-(back to hops 0). Result: limited for every forged header the edge lets through (next section).
+(back to hops 0). Result: the live probes were limited, but in the shared `unidentified` bucket, not per client (next section).
 
 ### Live results with the header option (`b2abe44`)
 
@@ -278,21 +279,63 @@ itself has no 403 (CSRF is checked only for authenticated mutations, `AuthServic
 is described as "DNS points to prohibited IP"; the exact reason Cloudflare uses this code here is Cloudflare's and was not
 investigated). No behaviour was changed.
 
-**What the results show, and what they do not.**
+**Correction: the first reading of these results was wrong.** An earlier version of this record (commit `67eefe2`, branch only,
+never merged) concluded "header mode is kept". The probes could not tell per-client keying from one shared bucket, and the Render
+logs show it was the shared bucket.
 
-* A forged `True-Client-IP` cannot select its own bucket: sixteen different forged values still filled one 15-per-minute window.
-  Either Cloudflare overwrote the header, or the request carried a second copy and fell into the shared `unidentified` bucket. Both
-  are fail-closed for the limiter; the probe cannot tell them apart.
-* A forged `X-Forwarded-For` is ignored in header mode, as designed.
-* A client-set `CF-Connecting-IP` never reaches the app (edge 403), so it cannot influence anything.
-* **Not shown:** that two different real clients get two different keys. If every request were in the `unidentified` bucket, runs
-  b and Group 2 would look the same. The app logs `client IP header missing or invalid; shared unidentified bucket used (N
-  request(s) so far)` (logger `rootsentinel.client_ip`) at N = 1, 10, 100 and so on; its absence from the Render application logs
-  after these runs would show the header was present and valid. Those logs were **not read** in this step.
+**Render application logs (Operator, search "unidentified", 2026-11-09).**
 
-**Decision: header mode is kept** (`True-Client-IP`, hops 0). The agreed criterion was met: the XFF-only forged run is limited and
-the edge rejects client-set CF headers; the forged `True-Client-IP` run is also limited. If the header ever stops arriving, the
-failure mode is the shared `unidentified` bucket (everyone shares 15 per minute), never a client choosing its own key.
+| Time (UTC) | Line |
+|---|---|
+| 12:10:03 | `client IP header missing or invalid; shared unidentified bucket used (1 request(s) so far)` |
+| 12:10:33 | same, `(10 request(s) so far)` |
+| 12:16:58 | same, `(100 request(s) so far)` |
+
+**Conclusion (operator).** `True-Client-IP` does not reach the app on Render (the header is absent at the origin). Run b and both
+Group 2 runs were limited in the shared `unidentified` bucket, not per client. The forged `True-Client-IP` was not seen either, so
+the client-sent copy is stripped before the origin. A forged `X-Forwarded-For` is ignored in header mode, as designed. Cloudflare's
+403 (error 1000) on a client-set `CF-Connecting-IP` stands. **Current live effect:** all clients share one 15-per-minute login bucket,
+plus the global 30 per minute. One client can block every sign-in for up to a minute, and a whole class always shares that one
+bucket.
+
+**What the counter counts (Code, `RequestGuard` in `backend/app/api.py`).**
+
+| Question | Answer |
+|---|---|
+| Which requests increment it | **Every HTTP request**, not only sign-ins, whenever `ROOTSENTINEL_CLIENT_IP_HEADER` is set and the header is missing, repeated or not exactly one address. That includes `GET /health` (and so Render's health checks), the frontend pages and assets, every `/api/v1` call, and requests that are then rejected (`HOST_REJECTED`, `ORIGIN_REJECTED`), because the client key is computed before those checks. Non-HTTP scopes (lifespan) are not counted. Test: `test_unidentified_counter_counts_every_http_request_not_only_logins`. |
+| Does it reset | **Yes, per process.** It is an attribute of the middleware instance, so it starts at 0 in every new process: each deploy, restart and cold start after the free instance sleeps. The first unidentified request of each process logs `(1 request(s) so far)`. One worker, so there is one counter. Test: `test_unidentified_counter_starts_again_in_every_new_process`. |
+| Does a 429 count toward the global login limit | **A per-client or account 429 does; a global 429 does not.** `LoginLimiter.check` (`backend/app/auth.py`) goes through global (30), then client (15), then account (5). Each bucket that still has room is incremented before the next one is checked. So a per-client 429 has already used one global slot, and an account 429 has used a global and a client slot. A global 429 is raised before anything is incremented. Requests rejected with 422 (malformed body or user name) never reach the limiter. A 503 `LOGIN_CAPACITY` comes after the limiter and counts. Windows are fixed: 60 s from each bucket's first attempt. Test: `test_a_per_client_429_still_uses_a_global_slot_and_a_global_429_uses_none`. |
+
+**Caveat about the log evidence.** Because `/health` also advances the counter, the lines above would also appear if only Render's
+health checks lacked the header. Render's health checks arrive about every 5 s with user agent `Render/1.0`; whether they pass
+through Cloudflare was not verified. The timing decides it. Each process logs `(1 request(s) so far)` at its first unidentified
+request. If `b2abe44` went live well before 12:10:03 and the instance did not restart in between, health checks did *not* produce
+that line, so it came from real traffic and the conclusion is confirmed directly. If the process started at about 12:10, health
+checks may explain some of the lines. Either way, the probes do not show per-client keying, so `True-Client-IP` is treated as not
+working.
+
+**Decision: under test: CF-Connecting-IP** (hops stay 0). Procedure and decision rules:
+[deployment.md, Procedure: testing CF-Connecting-IP](../deployment.md#procedure-testing-rootsentinel_client_ip_headercf-connecting-ip).
+If the test fails, the recommendation is to unset `ROOTSENTINEL_CLIENT_IP_HEADER` (hops 0, socket-peer keying). That removes the
+shared-bucket lockout only if Render's proxies reach the app from more than one address. Hops 0 without the header has **never
+been probed**: if every request arrives from one proxy address, socket-peer keying is also one shared bucket.
+
+**Proposal for 06B.1 (design only, not implemented): a temporary client-IP diagnostic.**
+
+* Setting `ROOTSENTINEL_CLIENT_IP_DIAGNOSTIC`, default off. When on, the app refuses to start if it is combined with
+  `ROOTSENTINEL_MODE` other than `local`, and it switches itself off after a fixed budget (for example 200 logged requests or
+  30 minutes, whichever comes first).
+* Scope: only `POST /api/v1/auth/login` and `GET /health`, each logged with its path class, so health checks and real sign-ins can
+  be told apart (the gap described above).
+* For each candidate header (`cf-connecting-ip`, `true-client-ip`, `x-forwarded-for`, `x-real-ip`, `forwarded`), plus the socket
+  peer, log: present or absent, number of copies, number of list entries, whether each entry parses as an IP address and its family,
+  and a **keyed hash** of each value: HMAC-SHA-256 with a random key made at process start, kept only in memory and never logged,
+  truncated to 8 bytes. Raw values are never logged. The hashes can be compared within one process (same client, same hash), but
+  cannot be reversed or linked across restarts. Without the key, the 2^32 IPv4 space cannot be brute-forced offline.
+* The user agent is logged only as a class (`Render/1.0`, other, absent), never verbatim.
+* Required tests: off by default; no raw header value or key in any log record (checked against the forged values); refusal outside
+  local mode; the budget switches it off; the hashes are stable within a process and differ across processes.
+* Removed again, or left off, once the client key is settled.
 
 **What still protects sign-in if per-client throttling cannot be made to work (Code).** The global limit of 30 per minute; the
 5 per minute per user name limit, independent of addresses (which also lets anyone lock a known name out for a minute); at most two
@@ -309,6 +352,10 @@ fifteen 401 then a 429 with code `LOGIN_RATE_LIMIT_CLIENT`; `--expect unlimited`
 limited-or-rejected` passes on the limited pattern or when **every** request was refused at the edge, printed as
 `EDGE-REJECTED (safe: no login attempts reached the app)`. A mix of edge and app answers fails; any 429 with another code is
 inconclusive (exit 2), never a pass. With `cf-connecting-ip` or `all` on this host, use `--expect limited-or-rejected`.
+`--attempts N` (1 to 30, default 16) sets the number of sign-ins; `limited` then means 401 for the first 15 and 429 after. When an
+`--expect unlimited` run is limited from its first attempt, it also prints `SHARED-BUCKET`. Every run prints the UTC time of its
+first request and last response. A per-client 429 still uses a global slot, so two back-to-back runs inside one 60 s window must
+total 30 attempts or fewer.
 
 ## Security versus usability
 
@@ -317,8 +364,9 @@ inconclusive (exit 2), never a pass. With `cf-connecting-ip` or `all` on this ho
   staggered. The cost was not lowered: it is what makes a stolen hash file expensive to attack.
 * **Shared addresses.** A class behind one NAT shares one client key (15 per minute) whatever identification is used, and all
   users share the global 30 per minute.
-* **Distinct real clients are not proved to get distinct keys** (run d is weak evidence; the `unidentified` log line was not
-  checked). If they all fall into one bucket, the effect is the same as one shared NAT.
+* **Live today, every client shares one bucket** (`True-Client-IP` is absent at the origin): the whole internet behaves like one
+  NAT, 15 sign-ins per minute in total before the per-client 429, and one person can block sign-in for everyone for up to a minute.
+  Run d is weak evidence and does not change this.
 * **Visitor mode** remains out of scope. Whether to add an anonymous synthetic-only visitor mode is a Phase 06B decision.
 
 ## Hosting limitations
@@ -361,9 +409,10 @@ changed.
 
 | File | Purpose |
 |---|---|
-| `scripts/smoke_public.py` | `--spoof-mode`, app versus edge classification per response, `--expect limited-or-rejected` (EDGE-REJECTED); old flags kept |
-| `backend/tests/test_smoke_probe.py` | 26 tests with mocked responses (classification, every `--expect` value, edge-only, mixed, global 429, headers per mode, CLI flags) |
-| `docs/deployment.md`, this file | results a to d, diagnosis, decision, plan resources, cold start split, card answers |
+| `scripts/smoke_public.py` | `--spoof-mode`, app versus edge classification per response, `--expect limited-or-rejected` (EDGE-REJECTED), `--attempts N` (1 to 30), SHARED-BUCKET verdict, UTC first and last times; old flags kept |
+| `backend/tests/test_smoke_probe.py` | 38 tests with mocked responses (classification, every `--expect` value, edge-only, mixed, global 429, headers per mode, CLI flags, attempts bounds and scaling, shared bucket) |
+| `backend/tests/test_client_ip.py` | 3 tests pinning the counter and limiter facts above (every request counts, reset per process, 429 and the global slot) |
+| `docs/deployment.md`, this file | results a to d, diagnosis, correction from the Render logs, CF-Connecting-IP test procedure, plan resources, cold start split, card answers |
 
 ---
 

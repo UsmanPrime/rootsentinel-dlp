@@ -87,7 +87,7 @@ root only to copy the two secret files to private 0600 paths, then migrates, run
 | `ROOTSENTINEL_ORIGIN` | exact public origin, https, no trailing slash | `https://<service>.onrender.com` |
 | `ROOTSENTINEL_DATABASE_URL` | Neon connection, driver prefix `postgresql+psycopg://` | set in the dashboard only |
 | `ROOTSENTINEL_TRUSTED_PROXY_HOPS` | `X-Forwarded-For` entry taken N from the right; 0 ignores the header | `0` (hop counting did not work on Render, see the Phase 06A evidence) |
-| `ROOTSENTINEL_CLIENT_IP_HEADER` | one header holding exactly one client address, set by the edge (for example `True-Client-IP`); empty = off. Cannot be combined with nonzero hops (startup refuses) | dashboard only, not in `render.yaml`; `True-Client-IP` on the live service (forged values verified not to choose a bucket, Phase 06A evidence) |
+| `ROOTSENTINEL_CLIENT_IP_HEADER` | one header holding exactly one client address, set by the edge (for example `True-Client-IP`); empty = off. Cannot be combined with nonzero hops (startup refuses) | dashboard only, not in `render.yaml`. `True-Client-IP` does **not** work on Render (absent at the origin, every client in one shared bucket). Under test: `CF-Connecting-IP` (procedure below) |
 | `ROOTSENTINEL_EXTRA_HOSTS` | exact additional Host values (for example a custom domain), no wildcards | unset |
 | `ROOTSENTINEL_SESSION_SECONDS` / `RETENTION_SECONDS` | 60-86400 / 1-900 | 3600 / 900 |
 | `ROOTSENTINEL_MAX_UPLOAD_BYTES` | 1024-10485760 | 1048576 (1 MiB) |
@@ -101,9 +101,12 @@ proxies that each append their peer's address. A header with too few entries or 
 With `ROOTSENTINEL_CLIENT_IP_HEADER` set, `X-Forwarded-For` is ignored and the login limiter keys on that one header, but only when
 it holds exactly one valid IPv4 or IPv6 address (IPv4-mapped IPv6 is normalised). A missing, repeated, list-valued or invalid header
 puts the request in one shared `unidentified` bucket; the raw value is never logged. This is safe only if the edge overwrites that
-header on every request that can reach the service. Run the throttle probe with `--spoof-mode true-client-ip` and
-`--spoof-mode xff` (`--expect limited`) to check it. On Render, Cloudflare refuses a client-set `CF-Connecting-IP` at the edge
-(403, Cloudflare error 1000), so `--spoof-mode cf-connecting-ip` and `all` need `--expect limited-or-rejected`.
+header on every request that can reach the service. A probe that is limited does **not** by itself prove per-client keying: the
+shared `unidentified` bucket is limited too. Only a second network inside the same window tells them apart (procedure below). Every
+request without a valid header (including `/health` and Render's health checks) advances the counter behind the log line
+`client IP header missing or invalid; shared unidentified bucket used (N request(s) so far)`, logged at N = 1, 10, 100 and so on,
+starting again at 1 in each new process. On Render, Cloudflare refuses a client-set `CF-Connecting-IP` at the edge (403,
+Cloudflare error 1000), so `--spoof-mode cf-connecting-ip` and `all` need `--expect limited-or-rejected`.
 
 ### Secrets: files and hashes, never plaintext
 
@@ -167,19 +170,51 @@ The dashboards change; where this list and the vendor page disagree, the vendor 
 * **Memory.** The free instance has **512 MB and 0.15 CPU** (Render Metrics page, "Limit"). Memory and CPU usage are shown only on
   paid compute plans, so peak memory on the free instance was not measured.
 * **Argon2 login time.** The smoke test prints the sign-in time. Record it (Phase 06A: 2.47 to 2.67 s live, 0.05 to 0.06 s in CI).
-* **Client identification.** Hop counts 1 and 2 were tried on Render and did not work. The live service uses
-  `ROOTSENTINEL_CLIENT_IP_HEADER=True-Client-IP` with hops 0. After a deploy, run
-  `python -B scripts\smoke_public.py --base-url https://<name>.onrender.com --probe-login-throttle --wait-seconds 65 --expect ...`
-  (the 65 s wait comes first in every run):
-  normal `--expect limited`; `--spoof-mode true-client-ip --expect limited`; `--spoof-mode xff --expect limited`;
-  `--spoof-mode all --expect limited-or-rejected` (Cloudflare refuses a client-set `CF-Connecting-IP`, which prints
-  `EDGE-REJECTED (safe: no login attempts reached the app)`); from a second network `--expect unlimited`.
-  A 429 whose code is not `LOGIN_RATE_LIMIT_CLIENT` (global or account limit) is inconclusive, not a pass. If a spoofed run that
-  reaches the app is not limited, the header is not trustworthy: remove it (back to hops 0). The second-network run is weak
-  evidence: after the 65 s wait it would also pass if every request shared one bucket. The app log line
-  `client IP header missing or invalid; shared unidentified bucket used` shows when the header is absent or invalid. The probe uses
-  the login limit for about a minute: never run it during the demo. A classroom behind one NAT shares one address, so up to 15
-  sign-ins per minute per address and 30 per minute overall apply however this is set.
+* **Client identification.** Hop counts 1 and 2 did not work on Render, and `True-Client-IP` is absent at the origin. Under test:
+  `ROOTSENTINEL_CLIENT_IP_HEADER=CF-Connecting-IP` with hops 0, using the procedure below. The probe uses up the login limit for
+  about a minute: never run it during the demo. A classroom behind one NAT shares one address, so up to 15 sign-ins per minute per
+  address and 30 per minute overall apply however this is set.
+
+#### Procedure: testing `ROOTSENTINEL_CLIENT_IP_HEADER=CF-Connecting-IP`
+
+Run everything in Windows PowerShell from the repository root, with the project venv's Python. Set `$U` to the service URL first:
+`$U = 'https://rootsentinel-dlp.onrender.com'`. Only fake user names are sent; no password is needed.
+
+**Timing constraint (this decides whether step B means anything).** Every limiter window is fixed: 60 s from its first attempt. A
+shared bucket would therefore be empty again 60 s after **A's first request**. A takes about 38 s (16 sign-ins at about 2.4 s
+each), so B's first request must be sent at most **55 s after A's first request**. "Within 40 s of A finishing" is not enough: at
+22 s or more after A ends, a shared bucket has already expired and B would falsely pass. The probe prints
+`first request sent at ...Z` for both runs, so the gap can be checked afterwards. To make the switch fast, turn the phone hotspot on
+and pair the PC with it before step A. Do B's ipify check right **after** B's probe, in the same window. It proves which network B
+used just as well, provided the PC does not switch networks in between.
+
+| Step | Do | Command | Expected (PASS) | FAIL or INVALID |
+|---|---|---|---|---|
+| 0 | In the Render dashboard (you, not Claude): set `ROOTSENTINEL_CLIENT_IP_HEADER` to `CF-Connecting-IP`, leave `ROOTSENTINEL_TRUSTED_PROXY_HOPS` at `0`, save (this redeploys). Wait for "Your service is live" and note that time in UTC as **T_live**. Then open `$U/health` once to be sure it is awake | — | live, health `ok` | startup refusal in the log: the name is wrong or hops are not 0 |
+| A | Normal Wi-Fi. Note your address, then probe | `irm https://api64.ipify.org` (note **IP_A**), then `python -B scripts\smoke_public.py --base-url $U --probe-login-throttle --wait-seconds 65 --attempts 16 --expect limited` | 15 lines `401 app INVALID_CREDENTIALS`, then `429 app LOGIN_RATE_LIMIT_CLIENT`; `PASS  observed pattern matches --expect limited`; exit 0. Note **A_first** from `first request sent at` | 16 x 401 (exit 1): the key changes per request, so the header is not trustworthy. Exit 2: someone else used the global limit, so redo A after 65 s |
+| B | At once: switch the PC to the phone hotspot (mobile data, phone Wi-Fi off), then probe **without** a wait, then check the address | `python -B scripts\smoke_public.py --base-url $U --probe-login-throttle --attempts 12 --expect unlimited`, then `irm https://api64.ipify.org` (**IP_B**) | **Per-client keying:** 12 lines `401 app INVALID_CREDENTIALS`, `PASS  observed pattern matches --expect unlimited`, exit 0, **and** IP_B differs from IP_A, **and** B's `first request sent at` is at most 55 s after A_first | **Shared bucket:** `429 app LOGIN_RATE_LIMIT_CLIENT` from #1, `FAIL ...` plus `SHARED-BUCKET ...`, exit 1. **INVALID** (repeat A and B after 65 s): gap over 55 s, IP_B equals IP_A, or exit 2 |
+| C | Hotspot or Wi-Fi | `python -B scripts\smoke_public.py --base-url $U --probe-login-throttle --wait-seconds 65 --spoof-mode cf-connecting-ip --expect limited-or-rejected` | `PASS  EDGE-REJECTED (safe: no login attempts reached the app)`, 16 lines `403 edge ... cloudflare error 1000`, exit 0 | 16 x 401 (exit 1): a client-set `CF-Connecting-IP` reaches the app and picks its own key. Never adopt then |
+| D | Render dashboard > Logs (you): search `unidentified` from T_live onward | — | **No lines** | see the decision rules |
+
+Global budget: A's 16 attempts (the 429 included, because a per-client 429 still uses a global slot) plus B's 12 make 28 inside
+A's 60 s global window, under 30. Do not sign in anywhere else during A and B.
+
+**Decision rules.**
+
+* **Adopt `CF-Connecting-IP`** when A, B and C all PASS and D shows no line. Record T_live, IP_A and IP_B (or only that they
+  differed), the four outputs and the log result in `docs/evidence`.
+* **Do not adopt** if B shows `SHARED-BUCKET`, A gives 16 x 401, C gives 16 x 401, or D shows a line caused by the probe traffic.
+  Then the header is not delivered, or not per client. Recommendation: unset `ROOTSENTINEL_CLIENT_IP_HEADER` (hops stay 0, so the
+  key is the socket peer). That removes the shared-bucket lockout only if Render's proxies reach the app from more than one
+  address; this configuration has never been probed. Expect no effective per-client limit; the global 30 per minute, the
+  per-account 5 per minute and the two Argon2id slots remain. The design for a temporary diagnostic is in the Phase 06A evidence
+  (06B.1).
+* **Caveat for D.** Render's own health checks (about every 5 s, user agent `Render/1.0`) also advance the counter. If they do
+  not pass through Cloudflare, they carry no `CF-Connecting-IP` and log `(1 request(s) so far)` within seconds of T_live, whatever
+  the probes show. Check this first: for the `True-Client-IP` deploy (`b2abe44`), compare its live time with the first logged line,
+  12:10:03 UTC. If `b2abe44` went live well before 12:10:03 (with no restart in between), health checks are not counted, and D's
+  rule "no lines" applies as written. If lines appear before A_first and keep their pace while no probe runs, they are health
+  checks. D is then not decisive, and the decision rests on B (with C). The diagnostic would settle this by logging the path class.
 
 ### Deploy policy: main only, after checks, no pushes on demo day
 
