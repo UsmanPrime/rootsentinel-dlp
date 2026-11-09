@@ -213,6 +213,46 @@ jobs:
           uid="$(docker exec rootsentinel awk '/^Uid:/ {print $2}' /proc/1/status)"
           echo "server uid: $uid"
           test "$uid" = "10001"
+      - name: The server has its own HOME, so libpq skips the optional client certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The server's startup environment (PID 1 is the uvicorn process after the entrypoint's exec chain).
+          server_env="$(docker exec rootsentinel sh -c "tr '\0' '\n' < /proc/1/environ")"
+          server_home="$(sed -n 's/^HOME=//p' <<< "$server_env")"
+          echo "server HOME: $server_home"
+          test "$server_home" = "/nonexistent"
+          # The environment is not cleared: the application's own settings still reach the server.
+          for name in ROOTSENTINEL_ORIGIN ROOTSENTINEL_MODE ROOTSENTINEL_AUDIT_KEY_FILE; do
+            grep -q "^${name}=" <<< "$server_env"
+          done
+          # As uid 10001 with the server's HOME, the default libpq certificate path must be absent (ENOENT, which
+          # libpq skips), never EACCES (which libpq treats as fatal). The control proves the check can fail: with
+          # root's HOME the same stat must be denied.
+          docker exec -i --user 10001:10001 -e HOME="$server_home" rootsentinel python - <<'PY'
+          import os, pwd
+
+          assert os.geteuid() == 10001, os.geteuid()
+          assert pwd.getpwuid(10001).pw_dir == "/nonexistent", pwd.getpwuid(10001).pw_dir
+
+          def probe():
+              path = os.path.expanduser("~/.postgresql/postgresql.crt")
+              try:
+                  os.stat(path)
+              except FileNotFoundError:
+                  return path, "FileNotFoundError"
+              except PermissionError:
+                  return path, "PermissionError"
+              return path, "exists"
+
+          path, result = probe()
+          print("server HOME:", path, "->", result)
+          assert result == "FileNotFoundError", result
+          os.environ["HOME"] = "/root"
+          path, result = probe()
+          print("control, root HOME:", path, "->", result)
+          assert result == "PermissionError", result
+          PY
       - name: Restart and verify that bootstrap is idempotent and the data survives
         shell: bash
         run: |

@@ -21,6 +21,11 @@ BASE=/var/lib/rootsentinel
 KEY_SOURCE="${ROOTSENTINEL_AUDIT_KEY_SOURCE:-/etc/secrets/audit-keys.json}"
 ACCOUNTS_SOURCE="${ROOTSENTINEL_ACCOUNTS_SOURCE:-/etc/secrets/accounts.json}"
 ACCOUNTS_DEST="$BASE/secrets/accounts.json"
+# The unprivileged account's home, identical to the passwd entry created in the Dockerfile. It does not exist.
+# Everything that runs as uid 10001 gets it explicitly: the root phase leaves HOME=/root in the environment, and
+# libpq (psycopg) looks for an optional client certificate under $HOME/.postgresql/. EACCES on /root/.postgresql is
+# fatal to libpq while ENOENT is skipped, so the unprivileged server must never inherit root's HOME.
+SERVER_HOME=/nonexistent
 
 [ -f "$KEY_SOURCE" ] || fail "the audit key secret file was not found; upload it as a secret file (see docs/deployment.md)"
 
@@ -29,11 +34,12 @@ if [ "$(id -u)" = "0" ]; then
   install -o 10001 -g 10001 -m 600 "$KEY_SOURCE" "$ROOTSENTINEL_AUDIT_KEY_FILE"
   [ ! -f "$ACCOUNTS_SOURCE" ] || install -o 10001 -g 10001 -m 600 "$ACCOUNTS_SOURCE" "$ACCOUNTS_DEST"
   chown -R 10001:10001 "$BASE"
-  run() { setpriv --reuid=10001 --regid=10001 --clear-groups "$@"; }
+  # env only sets HOME; every other variable (including ROOTSENTINEL_*) is passed through unchanged.
+  run() { setpriv --reuid=10001 --regid=10001 --clear-groups env HOME="$SERVER_HOME" "$@"; }
 else
   install -m 600 "$KEY_SOURCE" "$ROOTSENTINEL_AUDIT_KEY_FILE"
   [ ! -f "$ACCOUNTS_SOURCE" ] || install -m 600 "$ACCOUNTS_SOURCE" "$ACCOUNTS_DEST"
-  run() { "$@"; }
+  run() { env HOME="$SERVER_HOME" "$@"; }
 fi
 
 run python -m alembic -c alembic.ini upgrade head
@@ -46,7 +52,7 @@ fi
 # One worker: the rate limiters, processing slots and audit ordering assume a single process.
 # --no-proxy-headers: client addresses come from ROOTSENTINEL_TRUSTED_PROXY_HOPS inside the app.
 if [ "$(id -u)" = "0" ]; then
-  exec setpriv --reuid=10001 --regid=10001 --clear-groups python -m uvicorn app.api:create_app --factory \
+  exec setpriv --reuid=10001 --regid=10001 --clear-groups env HOME="$SERVER_HOME" python -m uvicorn app.api:create_app --factory \
     --host 0.0.0.0 --port "$PORT" --workers 1 --no-access-log --no-proxy-headers
 fi
-exec python -m uvicorn app.api:create_app --factory --host 0.0.0.0 --port "$PORT" --workers 1 --no-access-log --no-proxy-headers
+exec env HOME="$SERVER_HOME" python -m uvicorn app.api:create_app --factory --host 0.0.0.0 --port "$PORT" --workers 1 --no-access-log --no-proxy-headers

@@ -192,6 +192,20 @@ would last only about 17 days at 0.25 CU if you kept the service awake all month
 * The audit stream is capped at 20000 events; at the cap everything fails closed. Check the sequence number in the smoke output.
   Starting a new stream means a new database, which discards the old evidence on purpose.
 
+### Troubleshooting
+
+* **`could not open certificate file "/root/.postgresql/postgresql.crt": Permission denied`** (alembic fails at start-up against
+  Neon). Seen on the first Render deploy of `main` at `6277f0e`. The entrypoint starts as root and then runs everything as uid 10001,
+  and that process inherited `HOME=/root` from the root phase. libpq looks for an optional client certificate under
+  `$HOME/.postgresql/`: a missing file is skipped, but a permission error on that path is fatal. The fix is in `docker/entrypoint.sh`:
+  alembic, bootstrap and uvicorn now run with `HOME=/nonexistent` (the unprivileged account's passwd home, which does not exist), so
+  the path is simply absent; no other variable is changed and the privilege drop is unchanged. CI asserts this on every build (the
+  server's `HOME`, and that `os.stat` of the expanded path raises `FileNotFoundError` rather than `PermissionError` as uid 10001).
+  **If you set a `HOME=/nonexistent` environment variable in the Render dashboard as a workaround, you can remove it once the
+  deploy containing this fix is live.** Removing it before then brings the error back.
+* **`Network is unreachable` lines with IPv6 addresses** while connecting to Neon. Render's free instances have no IPv6 egress, so
+  the driver tries the IPv6 address, fails, and falls back to IPv4. These lines are harmless when the connection then succeeds.
+
 ### Rollback and shutdown
 
 Render can roll back to its two most recent earlier deploys (per Render's free-tier page). No migration is added by this phase, so a
