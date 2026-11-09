@@ -9,12 +9,17 @@ the SHA-256 of the received bytes with an independently computed digest, expect 
 fail (single use), (5) submit the protected fixture, expect BLOCK and that release is refused,
 (6) print the audit sequence number (privileged roles only), (7) sign out.
 
-``--probe-login-throttle`` is a separate mode for choosing ROOTSENTINEL_TRUSTED_PROXY_HOPS: it sends 16
-wrong-password sign-ins with unique user names (no account is touched) and prints only the HTTP status
-codes. Run it from two different networks (for example laptop Wi-Fi, then a phone on mobile data) and
-add ``--spoof-forwarded`` for a third run. With the right hop count the first network ends in 429 on
-the 16th attempt, the second network is NOT limited, and the spoofed run is limited exactly like the
-first. It uses up the login limit for about a minute, so never run it during a demo.
+``--probe-login-throttle`` is a separate mode for checking how the deployed app identifies clients
+(ROOTSENTINEL_CLIENT_IP_HEADER or ROOTSENTINEL_TRUSTED_PROXY_HOPS): it sends 16 wrong-password sign-ins
+with unique user names (no account is touched) and prints only the HTTP status codes.
+``--spoof-client-ip-headers`` adds a random forged True-Client-IP, CF-Connecting-IP and X-Forwarded-For
+to every request (``--spoof-forwarded`` forges only X-Forwarded-For). ``--expect limited`` (fifteen 401
+then 429) or ``--expect unlimited`` (sixteen 401) makes the exit status nonzero when the codes differ.
+When client identification works: one network gives fifteen 401 then 429, both normally and spoofed;
+a second network gives sixteen 401. The limiter windows are 60 s and there is also a global limit of 30
+attempts per minute, so wait at least 65 s before every probe run (``--wait-seconds 65``), otherwise
+the earlier run's attempts change the result. It uses up the login limit for about a minute, so never
+run it during a demo.
 
 The password comes from a hidden prompt or ``--password-file``; it is never an argument or an
 environment variable. Nothing secret is printed: no password, cookie or CSRF token. ``--origin`` lets
@@ -103,14 +108,38 @@ def warm_up(gateway: Gateway, limit: float) -> bool:
     return False
 
 
-def probe_login_throttle(gateway: Gateway, spoof: bool) -> int:
+PROBE_EXPECTATIONS = {"limited": [401] * 15 + [429], "unlimited": [401] * 16}
+
+
+def forged_headers(spoof_forwarded: bool, spoof_client_ip: bool) -> dict | None:
+    """Random documentation-range addresses (RFC 5737), a new set for every request."""
+    def address(prefix):
+        return f"{prefix}.{random.randint(1, 254)}"
+    extra = {}
+    if spoof_forwarded or spoof_client_ip:
+        extra["X-Forwarded-For"] = address("203.0.113")
+    if spoof_client_ip:
+        extra["True-Client-IP"], extra["CF-Connecting-IP"] = address("198.51.100"), address("192.0.2")
+    return extra or None
+
+
+def probe_login_throttle(gateway: Gateway, spoof_forwarded: bool, spoof_client_ip: bool, expect: str | None, wait: float) -> int:
+    if wait > 0:
+        print(f"waiting {wait:.0f} s so the previous probe's 60 s limiter windows have expired")
+        time.sleep(wait)
     codes = []
     for index in range(16):
-        extra = {"X-Forwarded-For": f"203.0.113.{random.randint(1, 254)}"} if spoof else None
+        extra = forged_headers(spoof_forwarded, spoof_client_ip)
         codes.append(gateway.json("POST", "/api/v1/auth/login", json_body={"username": f"probe-{random.randrange(10**9)}-{index}", "password": "wrong-password-value"}, extra=extra)[0])
-    print("login probe status codes:", " ".join(str(c) for c in codes))
-    print("expected with a correct hop count from one network: fifteen 401 then 429; from a second network: all 401")
-    return 0
+    mode = "spoofed True-Client-IP, CF-Connecting-IP and X-Forwarded-For" if spoof_client_ip else "spoofed X-Forwarded-For" if spoof_forwarded else "no forged headers"
+    print(f"login probe ({mode}) status codes:", " ".join(str(c) for c in codes))
+    print("expected when client identification works: from one network fifteen 401 then 429, normally AND spoofed; "
+          "from a second network (after the 65 s wait) sixteen 401")
+    if expect is None:
+        return 0
+    matched = codes == PROBE_EXPECTATIONS[expect]
+    print(f"{'PASS' if matched else 'FAIL'}  observed pattern {'matches' if matched else 'does NOT match'} --expect {expect}")
+    return 0 if matched else 1
 
 
 def main(argv=None) -> int:
@@ -118,15 +147,22 @@ def main(argv=None) -> int:
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--origin", help="the configured public origin (default: --base-url)")
     parser.add_argument("--username")
-    parser.add_argument("--probe-login-throttle", action="store_true", help="measure proxy hops instead of running the smoke test")
+    parser.add_argument("--probe-login-throttle", action="store_true", help="probe client identification instead of running the smoke test")
     parser.add_argument("--spoof-forwarded", action="store_true", help="with the probe: send a random X-Forwarded-For each time")
+    parser.add_argument("--spoof-client-ip-headers", action="store_true",
+                        help="with the probe: send random True-Client-IP, CF-Connecting-IP and X-Forwarded-For each time")
+    parser.add_argument("--expect", choices=sorted(PROBE_EXPECTATIONS), help="with the probe: exit 1 unless the codes match "
+                        "(limited: fifteen 401 then 429; unlimited: sixteen 401)")
+    parser.add_argument("--wait-seconds", type=float, default=0, help="with the probe: wait this long first (use 65 between runs)")
     parser.add_argument("--password-file", type=Path, help="one-line file; otherwise a hidden prompt is used")
     parser.add_argument("--warmup-seconds", type=float, default=240)
     parser.add_argument("--no-frontend", action="store_true", help="do not expect the built frontend at /")
     args = parser.parse_args(argv)
     origin = (args.origin or args.base_url).rstrip("/")
     if args.probe_login_throttle:
-        return probe_login_throttle(Gateway(args.base_url, origin), args.spoof_forwarded)
+        return probe_login_throttle(Gateway(args.base_url, origin), args.spoof_forwarded, args.spoof_client_ip_headers, args.expect, args.wait_seconds)
+    if args.spoof_forwarded or args.spoof_client_ip_headers or args.expect:
+        parser.error("--spoof-forwarded, --spoof-client-ip-headers and --expect only apply with --probe-login-throttle")
     if not args.username:
         parser.error("--username is required")
     password = args.password_file.read_text(encoding="utf-8").strip() if args.password_file else getpass.getpass("Password: ")

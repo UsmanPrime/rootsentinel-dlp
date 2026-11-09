@@ -11,6 +11,8 @@ from .config import StoragePaths, validate_external_path
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
 HOST_PATTERN = re.compile(r"[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::[0-9]{1,5})?")
+# A plain header field name: letters, digits and single inner hyphens, at most 64 characters.
+HEADER_NAME_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 
 def _integer(name: str, default: int) -> int:
@@ -40,6 +42,9 @@ class Settings:
     frontend_dir: Path | None = None
     max_upload_bytes: int = 10485760
     transfer_rate_per_minute: int = 30
+    # Optional single-address header set by the edge in front of the host (for example True-Client-IP).
+    # Empty keeps the earlier behavior (socket peer, or the hop count above).
+    client_ip_header: str = ""
 
     @property
     def hosted(self) -> bool:
@@ -62,6 +67,13 @@ class Settings:
             raise ValueError("Retention must be 1 through 900 seconds")
         if not 0 <= self.trusted_proxy_hops <= 5:
             raise ValueError("Trusted proxy hops must be 0 through 5")
+        if self.client_ip_header:
+            name = self.client_ip_header.strip().lower()
+            if len(name) > 64 or HEADER_NAME_PATTERN.fullmatch(name) is None:
+                raise ValueError("The client IP header must be a plain header name (letters, digits and hyphens)")
+            if self.trusted_proxy_hops:
+                raise ValueError("Set either the client IP header or trusted proxy hops, not both")
+            object.__setattr__(self, "client_ip_header", name)
         if not 1024 <= self.max_upload_bytes <= 10485760:
             raise ValueError("Upload cap must be 1024 through 10485760 bytes")
         if not 1 <= self.transfer_rate_per_minute <= 120:
@@ -102,6 +114,7 @@ class Settings:
             frontend_dir=Path(os.environ["ROOTSENTINEL_FRONTEND_DIR"]) if os.environ.get("ROOTSENTINEL_FRONTEND_DIR") else None,
             max_upload_bytes=_integer("ROOTSENTINEL_MAX_UPLOAD_BYTES", 10485760),
             transfer_rate_per_minute=_integer("ROOTSENTINEL_TRANSFER_RATE_PER_MINUTE", 30),
+            client_ip_header=os.environ.get("ROOTSENTINEL_CLIENT_IP_HEADER", "").strip(),
         )
 
     def prepare_storage(self):

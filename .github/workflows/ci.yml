@@ -168,6 +168,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ROOTSENTINEL_CI_ORIGIN: https://rootsentinel-ci.example
+      # Uncompressed image size budget in MiB (measured size x 1.2, rounded up). Empty = report only, not enforced.
+      IMAGE_SIZE_BUDGET_MIB: ''
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -188,6 +190,23 @@ jobs:
           python -B scripts/make_account_hashes.py --out "$secrets_dir/accounts.json" --account ci-analyst:ANALYST --password-file "$secrets_dir/smoke-password"
       - name: Build the hosted image
         run: docker build -t rootsentinel-hosted:ci .
+      - name: Image size within budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          bytes="$(docker image inspect --format '{{.Size}}' rootsentinel-hosted:ci)"
+          mib=$(( (bytes + 1048575) / 1048576 ))
+          {
+            echo "### Hosted image size"
+            echo ""
+            echo "Uncompressed size (docker image inspect .Size): ${bytes} bytes = ${mib} MiB (rounded up)."
+            echo "Budget (IMAGE_SIZE_BUDGET_MIB): ${IMAGE_SIZE_BUDGET_MIB:-not set, report only}."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "image size: ${bytes} bytes = ${mib} MiB; budget: ${IMAGE_SIZE_BUDGET_MIB:-not set}"
+          if [ -n "$IMAGE_SIZE_BUDGET_MIB" ] && [ "$mib" -gt "$IMAGE_SIZE_BUDGET_MIB" ]; then
+            echo "::error::hosted image is ${mib} MiB, above the ${IMAGE_SIZE_BUDGET_MIB} MiB budget"
+            exit 1
+          fi
       - name: The image refuses to start without an https origin
         shell: bash
         run: |

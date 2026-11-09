@@ -2,6 +2,7 @@
 import asyncio
 from contextlib import asynccontextmanager, suppress
 import ipaddress
+import logging
 from typing import Annotated
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -70,10 +71,50 @@ def forwarded_client(headers, hops):
         return None
 
 
+# Every request whose configured client IP header is missing or invalid shares this one key, so a forged or
+# absent value can never select its own rate-limit bucket. It cannot collide with a real address.
+UNIDENTIFIED_CLIENT = "unidentified"
+CLIENT_IP_LOG = logging.getLogger("rootsentinel.client_ip")
+
+
+def header_client(headers, name):
+    """The single IP address in header ``name``, or None when it is missing, repeated or not exactly one address.
+
+    Only meaningful when the edge in front of the host overwrites this header on every request; the
+    value is never trusted beyond being parsed as one IPv4 or IPv6 address (IPv4-mapped IPv6 is
+    normalised to IPv4, zone identifiers are rejected).
+    """
+    key = name.encode("latin1")
+    values = [v for k, v in headers if k == key]
+    if len(values) != 1:
+        return None
+    try:
+        address = ipaddress.ip_address(values[0].decode("latin1").strip())
+    except ValueError:
+        return None
+    if address.version == 6:
+        if address.scope_id is not None:
+            return None
+        if address.ipv4_mapped is not None:
+            address = address.ipv4_mapped
+    return str(address)
+
+
 class RequestGuard:
     """ASGI byte limits apply before JSON parsing; uploads additionally bound intake."""
     def __init__(self, app, settings):
         self.app, self.settings = app, settings
+        self.unidentified = 0
+
+    def client_from_header(self, headers):
+        client = header_client(headers, self.settings.client_ip_header)
+        if client is not None:
+            return client
+        # Count without logging the raw value; log at 1, 10, 100, ... so a flood cannot flood the log.
+        self.unidentified += 1
+        if self.unidentified in {10 ** k for k in range(10)}:
+            CLIENT_IP_LOG.warning("client IP header missing or invalid; shared unidentified bucket used (%d request(s) so far)", self.unidentified)
+        return UNIDENTIFIED_CLIENT
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -81,7 +122,10 @@ class RequestGuard:
         headers = dict(scope["headers"])
         host = headers.get(b"host", b"").decode("latin1")
         permitted = {urlsplit(self.settings.origin).netloc, "127.0.0.1:8000", "localhost:8000", *self.settings.extra_hosts}
-        forwarded = forwarded_client(scope["headers"], self.settings.trusted_proxy_hops)
+        if self.settings.client_ip_header:
+            forwarded = self.client_from_header(scope["headers"])
+        else:
+            forwarded = forwarded_client(scope["headers"], self.settings.trusted_proxy_hops)
         if forwarded is not None:
             scope = {**scope, "client": (forwarded, 0)}
         failure = None
