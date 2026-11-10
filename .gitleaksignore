@@ -1,0 +1,6 @@
+# Reviewed false positives only. Each line is one exact finding fingerprint: commit:file:rule:line for the
+# history scan (gitleaks git), file:rule:line for the working-tree scan (gitleaks dir).
+# The value is the SHA-256 digest of frontend/src/tokens.css in a Phase 01 evidence manifest of file digests;
+# the generic-api-key rule fires because the JSON key contains the word "tokens". It is not a credential.
+c552b217812793d19a03a521d06b9a1cdf6aa825:docs/evidence/phase-01-final-checks.json:generic-api-key:199
+docs/evidence/phase-01-final-checks.json:generic-api-key:204

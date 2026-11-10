@@ -22,5 +22,7 @@ scripts
 audit-keys.json
 accounts.json
 checkpoint-*.json
-ROOTSENTINEL_CLAUDE_HANDOFF.md
-CLAUDE.md
+# Root-level notes and documents: the image needs none of them (the Dockerfile copies only frontend/,
+# backend/ and docker/entrypoint.sh), so no local note can reach the build context.
+/*.md
+/*.txt
