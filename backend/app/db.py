@@ -36,7 +36,11 @@ class Base(DeclarativeBase):
 class Database:
     def __init__(self, url: str):
         args = {"check_same_thread": False, "timeout": 15} if url.startswith("sqlite:") else {}
-        self.engine = create_engine(url, connect_args=args, hide_parameters=True, pool_pre_ping=True)
+        # A small pool for one worker on a free database: at most 2 idle and 4 open connections. Connections are
+        # replaced after 280 s (below the usual 300 s idle cut-off of hosted PostgreSQL) and checked on checkout.
+        # Neither setting makes a database call while the application is idle: both act only on checkout.
+        self.engine = create_engine(url, connect_args=args, hide_parameters=True, pool_pre_ping=True,
+                                    pool_size=2, max_overflow=2, pool_recycle=280)
         if self.engine.dialect.name == "sqlite":
             @event.listens_for(self.engine, "connect")
             def configure(connection, _):

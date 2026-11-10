@@ -81,7 +81,8 @@ CLIENT_IP_LOG = logging.getLogger("rootsentinel.client_ip")
 # so this logger gets its own stderr handler to make INFO lines visible in the host's log.
 MEMORY_LOG = logging.getLogger("rootsentinel.memory")
 MEMORY_LOG_MINUTES = 10
-# The maintenance loop runs once a minute (expiry recovery, and the memory line every MEMORY_LOG_MINUTES runs).
+# The maintenance loop wakes once a minute (the memory line every MEMORY_LOG_MINUTES wake-ups). It touches the
+# database only when an expiry is due or snapshot files exist, so an idle process makes no database call.
 MAINTENANCE_SECONDS = 60
 if not MEMORY_LOG.handlers:
     _memory_handler = logging.StreamHandler()
@@ -133,23 +134,60 @@ def header_client(headers, name):
     return str(address)
 
 
+# The routes that use the client key. Only these count and log an unidentified client: the login limiter
+# today; visitor caps add their routes here.
+CLIENT_KEY_ROUTES = frozenset({("POST", "/api/v1/auth/login")})
+LOGGED_METHODS = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
+STATIC_SUFFIXES = (".js", ".css", ".html", ".svg", ".png", ".ico", ".woff2", ".webmanifest", ".map", ".txt", ".json")
+
+
+def classify_request(method, path, host_permitted):
+    """A fixed description of a request for log lines: no part of it is a raw request value.
+
+    The method is one of LOGGED_METHODS or OTHER; the route class is health, api, static or other; the host
+    is "yes" when the Host header named this service and "no" otherwise."""
+    if path == "/health":
+        route = "health"
+    elif path == "/api" or path.startswith("/api/"):
+        route = "api"
+    elif path == "/" or path.startswith("/assets/") or path.endswith(STATIC_SUFFIXES):
+        route = "static"
+    else:
+        route = "other"
+    return f"method={method if method in LOGGED_METHODS else 'OTHER'} route={route} host_permitted={'yes' if host_permitted else 'no'}"
+
+
 class RequestGuard:
     """ASGI byte limits apply before JSON parsing; uploads additionally bound intake."""
     def __init__(self, app, settings):
         self.app, self.settings = app, settings
+        self.permitted = frozenset({urlsplit(settings.origin).netloc, "127.0.0.1:8000", "localhost:8000", *settings.extra_hosts})
+        # Requests on a route that uses the client key (CLIENT_KEY_ROUTES) without a valid client header.
         self.unidentified = 0
         # Health probes come from the hosting platform itself, not through the edge, so they carry no client
-        # header. They never reach the login limiter; counting them separately keeps the warning above meaningful.
+        # header. They never reach the login limiter and are counted on their own.
         self.health_without_client = 0
 
-    def client_from_header(self, headers):
-        client = header_client(headers, self.settings.client_ip_header)
+    def identify(self, scope):
+        """The client address for a request whose Host is already accepted, or None to keep the socket peer."""
+        name = self.settings.client_ip_header
+        if not name:
+            return forwarded_client(scope["headers"], self.settings.trusted_proxy_hops)
+        client = header_client(scope["headers"], name)
         if client is not None:
             return client
-        # Count without logging the raw value; log at 1, 10, 100, ... so a flood cannot flood the log.
-        self.unidentified += 1
-        if self.unidentified in {10 ** k for k in range(10)}:
-            CLIENT_IP_LOG.warning("client IP header missing or invalid; shared unidentified bucket used (%d request(s) so far)", self.unidentified)
+        if scope["path"] == "/health":
+            self.health_without_client += 1
+            return None
+        if (scope["method"], scope["path"]) in CLIENT_KEY_ROUTES:
+            # Counted only where the key is used. The line carries a fixed classification, never a raw value,
+            # and is written at 1, 10, 100, ... so a flood cannot flood the log.
+            self.unidentified += 1
+            if self.unidentified in {10 ** k for k in range(10)}:
+                CLIENT_IP_LOG.warning("client IP header missing or invalid; shared unidentified bucket used (%d request(s) so far; %s)",
+                                      self.unidentified, classify_request(scope["method"], scope["path"], True))
+        # Every route gets the shared key, so a route that starts using the client can never fall back to the
+        # socket peer; only the routes above count it.
         return UNIDENTIFIED_CLIENT
 
     async def __call__(self, scope, receive, send):
@@ -157,20 +195,17 @@ class RequestGuard:
             return await self.app(scope, receive, send)
         headers = dict(scope["headers"])
         host = headers.get(b"host", b"").decode("latin1")
-        permitted = {urlsplit(self.settings.origin).netloc, "127.0.0.1:8000", "localhost:8000", *self.settings.extra_hosts}
-        if self.settings.client_ip_header and scope["path"] == "/health":
-            forwarded = header_client(scope["headers"], self.settings.client_ip_header)
-            if forwarded is None:
-                self.health_without_client += 1
-        elif self.settings.client_ip_header:
-            forwarded = self.client_from_header(scope["headers"])
-        else:
-            forwarded = forwarded_client(scope["headers"], self.settings.trusted_proxy_hops)
-        if forwarded is not None:
-            scope = {**scope, "client": (forwarded, 0)}
         failure = None
-        if host not in permitted:
+        # The Host check comes first: a request for another host is refused before any client identification,
+        # so it can neither select a bucket nor advance a counter.
+        if host not in self.permitted:
             failure = ("HOST_REJECTED", 400)
+        else:
+            forwarded = self.identify(scope)
+            if forwarded is not None:
+                scope = {**scope, "client": (forwarded, 0)}
+        if failure:
+            pass
         elif self.settings.mode != "local" and scope["path"].startswith("/api/v1"):
             failure = ("PUBLIC_DEMO_NOT_READY", 403)
         elif scope["method"] not in {"GET", "HEAD", "OPTIONS"}:
@@ -227,8 +262,11 @@ def create_app(settings: Settings | None = None):
             if state is None:
                 raise RuntimeError("Run migrations before starting the API")
             active_policy(s, state)
+        # Either call ends with the one query that sets the gateway's in-memory next due time.
         if settings.audit_key_file is not None and settings.checkpoint_root is not None:
             gateway.recover(restart=True)
+        else:
+            gateway.load_due()
         log_peak_memory("at startup")
 
         async def maintenance():
@@ -239,7 +277,8 @@ def create_app(settings: Settings | None = None):
                 if minutes % MEMORY_LOG_MINUTES == 0:
                     log_peak_memory(f"after {minutes} minutes")
                 try:
-                    await run_in_threadpool(gateway.recover)
+                    # No database call unless an expiry is due or snapshot files exist (Gateway.maintain).
+                    await run_in_threadpool(gateway.maintain)
                 except Exception:
                     # Release still fails closed; retry bounded maintenance next minute.
                     pass

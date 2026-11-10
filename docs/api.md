@@ -146,6 +146,8 @@ OpenAPI and generated frontend contracts are checked in. Run
 | `commit` | the deployed commit (7 to 40 lowercase hex characters) from `ROOTSENTINEL_COMMIT`, else `RENDER_GIT_COMMIT`, else `unknown` |
 | `max_upload_bytes` | the upload cap the interface enforces before sending |
 
+`/health` makes no database call, so a keep-alive request to it does not wake the database.
 With `ROOTSENTINEL_CLIENT_IP_HEADER` set, a `/health` request without a valid header is
 counted separately and does not advance the `unidentified` client counter; health probes
-never reach the login limiter.
+never reach the login limiter. The Host check runs before any client identification, and
+only a route that uses the client key (sign-in) advances the `unidentified` counter.

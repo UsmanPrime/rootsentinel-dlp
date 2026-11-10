@@ -203,29 +203,140 @@ def unidentified_counts(caplog):
     return [r.getMessage() for r in caplog.records if r.name == "rootsentinel.client_ip"]
 
 
-def test_unidentified_counter_counts_every_request_except_health_probes(system, caplog):
-    """Pages, API calls and rejected requests without the header advance the counter (logged at 1, 10, 100...).
-    Health probes do not: the hosting platform sends them directly, without the edge header, so they would
-    otherwise fill the warning with noise and hide real requests that arrive without a client address."""
+LOGIN_CLASS = "method=POST route=api host_permitted=yes"
+
+
+def guard_of(client):
+    guard = client.app.middleware_stack
+    while guard is not None and not hasattr(guard, "health_without_client"):
+        guard = getattr(guard, "app", None)
+    assert guard is not None
+    return guard
+
+
+def test_unidentified_counter_counts_only_requests_that_use_the_client_key(system, caplog):
+    """Only a sign-in without a valid header advances the counter (logged at 1, 10, 100...), because sign-in is
+    the only route that uses the client key. Health probes, pages, other API calls and rejected requests do not:
+    they would fill the warning with noise and hide sign-ins that arrive without a client address."""
     with caplog.at_level(logging.WARNING, logger="rootsentinel.client_ip"):
         with TestClient(create_app(header_settings(system)), base_url=ORIGIN, raise_server_exceptions=False) as client:
+            client.headers["origin"] = ORIGIN
             for _ in range(5):
                 assert client.get("/health").status_code == 200                                # never counted
-            assert unidentified_counts(caplog) == []
-            assert client.get("/api/v1/auth/me").status_code == 401
-            assert unidentified_counts(caplog) == ["client IP header missing or invalid; shared unidentified bucket used (1 request(s) so far)"]
-            for _ in range(4):
-                client.get("/api/v1/auth/me")
+            assert client.get("/api/v1/auth/me").status_code == 401                             # the key is not used
             client.post("/api/v1/auth/logout", headers={"origin": "https://elsewhere.example"})   # 403 ORIGIN_REJECTED
             client.get("/missing-page")                                                         # not an API route
-            for _ in range(3):
-                client.get("/api/v1/auth/me", headers={HEADER: "198.51.100.7"})                 # valid header: not counted
-            for _ in range(3):
-                client.get("/health")                                                           # still not counted
-            assert len(unidentified_counts(caplog)) == 1
-            for _ in range(3):
-                client.get("/api/v1/auth/me")                                                   # 8th to 10th unidentified request
-    assert unidentified_counts(caplog)[-1].endswith("(10 request(s) so far)")
+            client.get("/api/v1/auth/login")                                                    # not the sign-in method
+            assert unidentified_counts(caplog) == [] and guard_of(client).unidentified == 0
+            assert login(client, 0, {}) == 401
+            assert unidentified_counts(caplog) == [
+                f"client IP header missing or invalid; shared unidentified bucket used (1 request(s) so far; {LOGIN_CLASS})"]
+            for i in range(3):
+                assert login(client, 100 + i, {HEADER: f"198.51.100.{i + 1}"}) == 401           # valid header: not counted
+            for i in range(1, 9):
+                login(client, i, {})
+            assert len(unidentified_counts(caplog)) == 1 and guard_of(client).unidentified == 9
+            login(client, 9, {HEADER: "not-an-address"})                                        # the 10th
+    assert unidentified_counts(caplog)[-1].endswith(f"(10 request(s) so far; {LOGIN_CLASS})")
+    assert len(unidentified_counts(caplog)) == 2
+
+
+def test_a_route_that_does_not_use_the_key_still_gets_the_shared_key_never_the_socket_peer(system):
+    # Fail closed for later routes: without a valid header the client is the shared key on every route except
+    # /health, so a route that starts keying on the client cannot be given the proxy's address by mistake.
+    from app.api import RequestGuard
+    seen = []
+
+    async def inner(scope, receive, send):
+        seen.append(scope["client"][0])
+
+    async def run(path, headers):
+        guard = RequestGuard(inner, header_settings(system))
+        scope = {"type": "http", "method": "GET", "path": path, "client": ("10.9.8.7", 1234),
+                 "headers": [(b"host", b"rs-test.example"), *headers]}
+        await guard(scope, None, None)
+        return guard
+
+    import asyncio
+    guard = asyncio.run(run("/api/v1/assets", []))
+    assert seen == [UNIDENTIFIED_CLIENT] and guard.unidentified == 0
+    asyncio.run(run("/api/v1/assets", [(b"true-client-ip", b"198.51.100.7")]))
+    asyncio.run(run("/health", []))
+    assert seen[1:] == ["198.51.100.7", "10.9.8.7"]
+
+
+# ---------------------------------------------------------------------------------------------- Host check first
+def test_a_foreign_host_is_refused_before_any_client_identification(system, caplog, monkeypatch):
+    import app.api as api_module
+    parsed = []
+    original = api_module.header_client
+    monkeypatch.setattr(api_module, "header_client", lambda headers, name: parsed.append(name) or original(headers, name))
+    foreign = {"host": "elsewhere.example"}
+    with caplog.at_level(logging.WARNING, logger="rootsentinel.client_ip"):
+        with TestClient(create_app(header_settings(system)), base_url=ORIGIN, raise_server_exceptions=False) as client:
+            client.headers["origin"] = ORIGIN
+            for i in range(20):                                       # more than the per-client limit of 15
+                response = client.post("/api/v1/auth/login", json={"username": f"nobody-{i}", "password": "wrong-password-value"},
+                                       headers={**foreign, **({HEADER: "198.51.100.7"} if i % 2 else {})})
+                assert response.status_code == 400 and response.json()["error"]["code"] == "HOST_REJECTED"
+            assert client.get("/health", headers=foreign).status_code == 400
+            guard = guard_of(client)
+            assert parsed == []                                       # the client header was never read
+            assert guard.unidentified == 0 and guard.health_without_client == 0
+            assert unidentified_counts(caplog) == []
+            # None of the 20 reached the limiter: the same address and the shared key both still have a full window.
+            assert login(client, 50, {HEADER: "198.51.100.7"}) == 401
+            assert login(client, 51, {}) == 401
+            assert parsed == [HEADER, HEADER] and guard.unidentified == 1
+
+
+def test_a_foreign_host_is_refused_first_in_hop_count_mode_too(system, monkeypatch):
+    import app.api as api_module
+    parsed = []
+    original = api_module.forwarded_client
+    monkeypatch.setattr(api_module, "forwarded_client", lambda headers, hops: parsed.append(hops) or original(headers, hops))
+    settings = replace(system[0], origin=ORIGIN, secure_cookies=True, trusted_proxy_hops=1)
+    with TestClient(create_app(settings), base_url=ORIGIN, raise_server_exceptions=False) as client:
+        assert client.get("/health", headers={"host": "elsewhere.example", "x-forwarded-for": "198.51.100.7"}).status_code == 400
+        assert parsed == []
+        assert client.get("/health", headers={"x-forwarded-for": "198.51.100.7"}).status_code == 200
+        assert parsed == [1]
+
+
+# ---------------------------------------------------------------------------------------------- log classification
+@pytest.mark.parametrize("method,path,permitted,expected", [
+    ("GET", "/health", True, "method=GET route=health host_permitted=yes"),
+    ("HEAD", "/health", False, "method=HEAD route=health host_permitted=no"),
+    ("POST", "/api/v1/auth/login", True, "method=POST route=api host_permitted=yes"),
+    ("DELETE", "/api", True, "method=DELETE route=api host_permitted=yes"),
+    ("GET", "/apiary", True, "method=GET route=other host_permitted=yes"),
+    ("GET", "/", True, "method=GET route=static host_permitted=yes"),
+    ("GET", "/assets/index-3f9a.js", True, "method=GET route=static host_permitted=yes"),
+    ("GET", "/favicon.svg", True, "method=GET route=static host_permitted=yes"),
+    ("GET", "/transfers", True, "method=GET route=other host_permitted=yes"),
+    ("GET", "/health/", True, "method=GET route=other host_permitted=yes"),
+    ("PROPFIND", "/x", True, "method=OTHER route=other host_permitted=yes"),
+    ("get", "/health", True, "method=OTHER route=health host_permitted=yes"),
+    ("GET\r\nX-Injected: 1", "/secret-path?token=abc\r\nINFO forged", False, "method=OTHER route=other host_permitted=no"),
+])
+def test_log_classification_is_fixed_and_never_echoes_a_request_value(method, path, permitted, expected):
+    from app.api import classify_request
+    line = classify_request(method, path, permitted)
+    assert line == expected
+    assert re.fullmatch(r"method=(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|OTHER) route=(health|static|api|other) host_permitted=(yes|no)", line)
+
+
+def test_the_unidentified_log_line_holds_only_the_count_and_the_classification(header_mode, caplog):
+    raw = ["203.0.113.250, 198.51.100.7", "attacker-chosen-key\r\nforged line", "198.51.100.7:443"]
+    with caplog.at_level(logging.WARNING, logger="rootsentinel.client_ip"):
+        for i in range(10):
+            header_mode.post("/api/v1/auth/login", json={"username": f"secret-name-{i}", "password": "wrong-password-value"},
+                             headers={HEADER: raw[i % len(raw)], "x-forwarded-for": "192.0.2.99", "user-agent": "probe-agent/9"})
+    messages = unidentified_counts(caplog)
+    pattern = (r"client IP header missing or invalid; shared unidentified bucket used \((1|10) request\(s\) so far; "
+               r"method=POST route=api host_permitted=yes\)")
+    assert len(messages) == 2 and all(re.fullmatch(pattern, m) for m in messages)
+    assert not any(value in m for m in messages for value in ("203.0.113", "198.51.100", "192.0.2", "attacker", "secret-name", "probe-agent"))
 
 
 def test_health_probes_are_counted_separately_and_never_select_a_bucket(system):
@@ -245,8 +356,9 @@ def test_unidentified_counter_starts_again_in_every_new_process(system, caplog):
     with caplog.at_level(logging.WARNING, logger="rootsentinel.client_ip"):
         for _ in range(2):
             with TestClient(create_app(header_settings(system)), base_url=ORIGIN) as client:
-                client.get("/api/v1/auth/me")
-    assert [m.endswith("(1 request(s) so far)") for m in unidentified_counts(caplog)] == [True, True]
+                client.headers["origin"] = ORIGIN
+                login(client, 0, {})
+    assert [m.endswith(f"(1 request(s) so far; {LOGIN_CLASS})") for m in unidentified_counts(caplog)] == [True, True]
 
 def test_a_per_client_429_still_uses_a_global_slot_and_a_global_429_uses_none():
     from app.auth import LoginLimiter

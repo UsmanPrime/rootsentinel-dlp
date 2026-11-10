@@ -3,6 +3,7 @@ from datetime import timedelta
 from hashlib import sha256
 import hmac
 import json
+from threading import Lock
 import time
 from sqlalchemy import select, func
 
@@ -35,6 +36,31 @@ class Gateway:
         self.db, self.settings = database, settings
         self.store = SnapshotStore(settings.paths.runtime / "retained")
         self.audit = AuditService(KeyRing.load(settings.audit_key_file), settings.checkpoint_root)
+        # The earliest expires_at among ALLOWED transfers, or None when there is none. Held in memory so that
+        # maintenance can decide without a database call whether anything is due. It may be earlier than the
+        # truth (a released transfer leaves its time behind: one extra pass), never later: every writer holds
+        # the registry lock, and a failed pass resets it to "now".
+        self.next_due = None
+        self.due_lock = Lock()
+
+    def note_due(self, when):
+        with self.due_lock:
+            self.next_due = when if self.next_due is None else min(self.next_due, when)
+
+    def load_due(self):
+        """Startup without restart recovery (no audit key file or checkpoint root): one query sets the due time."""
+        with self.db.transaction() as s:
+            remaining = s.scalar(select(func.min(Transfer.expires_at)).where(Transfer.state == "ALLOWED"))
+        with self.due_lock:
+            self.next_due = remaining
+
+    def maintain(self):
+        """One maintenance tick. Makes no database call unless an expiry is due or snapshot files exist."""
+        with self.due_lock:
+            due = self.next_due is not None and self.next_due <= now()
+        if due or self.store.pending():
+            return self.recover(expire=due)
+        return None
 
     def owned(self, s, actor, identifier, release=False):
         transfer = s.get(Transfer, identifier)
@@ -83,6 +109,8 @@ class Gateway:
                 t.scan_id = scan.id
                 target = {"ALLOW": "ALLOWED", "BLOCK": "BLOCKED"}.get(scan.decision.outcome, "ERROR")
                 transition(t, target, scan.decision.reason)
+                if target == "ALLOWED":
+                    self.note_due(t.expires_at)  # under the registry lock; a rollback only costs one early pass
                 self.audit.append(s, "SCAN_COMPLETED", actor.id, t.id, scan_id=scan.id)
                 self.audit.append(s, "DECISION_" + target if target != "ERROR" else "TRANSFER_ERROR", actor.id, t.id,
                     scan_id=scan.id, policy_id=scan.policy_id, registry_revision=scan.detection.registry_revision,
@@ -185,23 +213,36 @@ class Gateway:
             attempt.outcome, attempt.finished_at = target, now()
             self.audit.append(s, target, t.actor_id, t.id)
 
-    def recover(self, limit=100, restart=False):
+    def recover(self, limit=100, restart=False, expire=True):
+        """Bounded recovery. ``expire=False`` (maintenance with snapshot files but nothing due) skips the
+        transition pass and its registry lock, and only cleans up snapshot files."""
         removed = []
-        with self.db.transaction() as s:
-            lock_state(s)
-            query = select(Transfer).where(Transfer.state.in_(["SCANNING", "RELEASE_STARTED"]) if restart else Transfer.state == "ALLOWED")
-            if not restart:
-                query = query.where(Transfer.expires_at <= now())
-            for t in s.scalars(query.order_by(Transfer.created_at).limit(limit)):
-                target = {"SCANNING": "ERROR", "RELEASE_STARTED": "DELIVERY_UNKNOWN", "ALLOWED": "EXPIRED"}[t.state]
-                transition(t, target, "RESTART_RECOVERY" if restart else "RELEASE_WINDOW_EXPIRED")
-                if target == "DELIVERY_UNKNOWN":
-                    attempt = s.scalar(select(ReleaseAttempt).where(ReleaseAttempt.transfer_id == t.id))
-                    if attempt:
-                        attempt.outcome, attempt.finished_at = target, now()
-                self.audit.append(s, "TRANSFER_ERROR" if target == "ERROR" else "TRANSFER_EXPIRED" if target == "EXPIRED" else target,
-                                  t.actor_id, t.id, reason=t.reason)
-                removed.append(t.snapshot_id)
+        if expire:
+            try:
+                with self.db.transaction() as s:
+                    lock_state(s)
+                    query = select(Transfer).where(Transfer.state.in_(["SCANNING", "RELEASE_STARTED"]) if restart else Transfer.state == "ALLOWED")
+                    if not restart:
+                        query = query.where(Transfer.expires_at <= now())
+                    for t in s.scalars(query.order_by(Transfer.created_at).limit(limit)):
+                        target = {"SCANNING": "ERROR", "RELEASE_STARTED": "DELIVERY_UNKNOWN", "ALLOWED": "EXPIRED"}[t.state]
+                        transition(t, target, "RESTART_RECOVERY" if restart else "RELEASE_WINDOW_EXPIRED")
+                        if target == "DELIVERY_UNKNOWN":
+                            attempt = s.scalar(select(ReleaseAttempt).where(ReleaseAttempt.transfer_id == t.id))
+                            if attempt:
+                                attempt.outcome, attempt.finished_at = target, now()
+                        self.audit.append(s, "TRANSFER_ERROR" if target == "ERROR" else "TRANSFER_EXPIRED" if target == "EXPIRED" else target,
+                                          t.actor_id, t.id, reason=t.reason)
+                        removed.append(t.snapshot_id)
+                    # Still under the registry lock, so this cannot overwrite a time noted by a later submission.
+                    # At startup this is the one recovery query that sets the next due time.
+                    remaining = s.scalar(select(func.min(Transfer.expires_at)).where(Transfer.state == "ALLOWED"))
+                    with self.due_lock:
+                        self.next_due = remaining
+            except Exception:
+                with self.due_lock:
+                    self.next_due = now()  # the outcome is unknown: look again on the next pass
+                raise
         for identifier in removed:
             self.store.remove(identifier)
         with self.db.transaction() as s:

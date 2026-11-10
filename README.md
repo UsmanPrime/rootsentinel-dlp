@@ -269,6 +269,7 @@ rootsentinel-dlp/
 | [Database](docs/database.md) | Schema and migrations |
 | [Frontend](docs/frontend.md) | Routes, design tokens, interaction and the guided demo |
 | [Deployment](docs/deployment.md) | Local operation and the hosted demo |
+| [Demo runbook](docs/demo-runbook.md) | Keep-alive, budget checks and fallbacks for the grading window |
 | [Developer guide](docs/developer-guide.md) | Toolchain, storage rules, repository rules |
 | [Testing](docs/testing.md) | Test levels, CI jobs and scanners |
 | [Requirements](docs/requirements.md) | Course requirements and traceability |

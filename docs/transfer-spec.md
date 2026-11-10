@@ -114,9 +114,21 @@ A retry always needs a new transfer and current evaluation. See the
 Blocked/failed content is removed promptly after durable decision recording. On startup,
 when an audit key file and a checkpoint root are configured, bounded recovery marks SCANNING
 as ERROR and RELEASE_STARTED as DELIVERY_UNKNOWN.
-Every minute, bounded maintenance expires ALLOWED snapshots and deletes terminal/orphan
-UUID snapshots. Orphans must be older than 900 seconds; unrelated filenames are ignored.
-An administrator may invoke `/transfers-maintenance/expire`. Each pass handles at most
+The same startup step runs one query for the earliest expiry among ALLOWED transfers and
+keeps that time in memory; every later ALLOWED decision updates it.
+The maintenance loop wakes every minute but makes a database call only when work is due.
+When the in-memory time has passed, a bounded pass expires ALLOWED snapshots and reads the
+next due time from what remains. When retained snapshot files exist, a pass deletes
+terminal/orphan UUID snapshots; with nothing due it takes no registry lock and writes
+nothing. With no due time and no snapshot file the loop does not touch the database, so
+expiry still happens within a minute of the due time and an idle process stays silent. The
+in-memory time can be earlier than needed (a released transfer leaves its time behind,
+which costs one empty pass) but never later: it is changed only under the registry lock,
+and a failed pass sets it to the present so the next wake-up retries. Release checks the
+stored expiry itself and refuses an expired transfer whether or not maintenance has run.
+Orphans must be older than 900 seconds; unrelated filenames are ignored.
+An administrator may invoke `/transfers-maintenance/expire`, which always runs a full
+pass. Each pass handles at most
 100 records and examines at most 1,000 directory entries. Missing keys/audit storage
 prevent mandatory transitions; release still fails closed. Operator repair and another
 maintenance pass are required. Filesystem unlink is not secure erasure of physical media.

@@ -51,6 +51,9 @@ abuse-prevention service.
 The client is the socket peer by default. With `ROOTSENTINEL_CLIENT_IP_HEADER` set (the
 hosted demo uses `True-Client-IP`), the client is the single address in that header; a
 missing, repeated or invalid value puts the request in one shared `unidentified` bucket.
+A request with a foreign Host is refused before the client is identified, so it never
+reaches a bucket. Only sign-in uses the client key, so only a sign-in without a valid
+header is counted and logged, with a fixed classification and no request value.
 `ROOTSENTINEL_TRUSTED_PROXY_HOPS` is the alternative `X-Forwarded-For` mode; startup
 refuses both together. Unvalidated proxy headers are never trusted. See
 [deployment](deployment.md). Public-demo mode denies all operational API routes, even

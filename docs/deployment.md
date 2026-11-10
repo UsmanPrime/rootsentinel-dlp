@@ -50,7 +50,7 @@ must be 0700 and private files 0600. The application does not change existing sy
 permissions. Resolve unsafe locations by provisioning an approved private application
 directory, not by weakening the checks.
 
-The process performs bounded startup recovery and minute-based expiry. A missing key,
+The process performs bounded startup recovery and expiry within a minute of the due time. A missing key,
 invalid chain or unavailable checkpoint store prevents release; repair dependencies and
 restart, inspect uncertain transfers, then request a fresh transfer as needed. Never edit
 BLOCK/ERROR/STALE states to ALLOWED. Server send completion is not recipient confirmation.
@@ -121,11 +121,16 @@ header on every request that can reach the service. On Render, Cloudflare fronts
 because the shared `unidentified` bucket is limited too. Only a second network inside the same window tells them apart (procedure
 below).
 
-Every non-health request without a valid header advances the counter behind the log line `client IP header missing or invalid;
-shared unidentified bucket used (N request(s) so far)`, logged at N = 1, 10, 100 and so on, starting again at 1 in each new process.
-Requests to `/health`, including Render's own health checks, are counted separately (`health_without_client`) and never advance
-it. The line therefore means that a real request reached the service without a valid header. Phase 06A, before this change, saw the
-line caused by health checks alone and first misread it.
+The Host check runs first: a request whose Host is not this service is refused with `HOST_REJECTED` before the client header is
+read, so it can neither select a bucket nor advance a counter. Only a route that uses the client key advances the counter behind
+the log line `client IP header missing or invalid; shared unidentified bucket used (N request(s) so far; method=POST route=api
+host_permitted=yes)`. Today that is sign-in alone. The line is logged at N = 1, 10, 100 and so on, starting again at 1 in each new
+process. Its last part is a fixed classification: the method (one of seven known methods or `OTHER`), the route class (`health`,
+`static`, `api` or `other`) and whether the Host was permitted (`yes` or `no`; always `yes` here because the Host check has
+already passed). No header value, address, path or name is ever written. Requests to `/health`, including Render's own health
+checks, are counted separately (`health_without_client`); pages, other API calls and rejected requests are not counted at all.
+The line therefore means that a sign-in reached the service without a valid header. Phase 06A saw the line caused by health checks
+alone and first misread it.
 
 Cloudflare also refuses a client-set `CF-Connecting-IP` at the edge (403, Cloudflare error 1000), so `--spoof-mode
 cf-connecting-ip` and `all` need `--expect limited-or-rejected`.
@@ -243,10 +248,43 @@ Only fake user names are sent; no real password is used. Open `$U/health` first 
 
 ### Day of the demo
 
-Ten minutes before: run the smoke test (the warm-up loop wakes the service and the database). Do not poll afterwards: while the
-app is awake it queries Neon once a minute, so Neon's free compute allowance (100 CU-hours per month according to Neon's plan page)
-would last only about 17 days at 0.25 CU if you kept the service awake all month. Disable the ADMIN and class accounts afterwards
-(`"enabled": false` in your local file, upload it again, redeploy).
+Ten minutes before: run the smoke test (the warm-up loop wakes the service and the database). An awake service with no users makes
+no database call, so a keep-alive request to `/health` costs Render hours only (see the hosting budget below and the
+[demo runbook](demo-runbook.md)). Disable the ADMIN and class accounts afterwards (`"enabled": false` in your local file, upload it
+again, redeploy).
+
+### Hosting budget
+
+Both hosts are on free plans. The figures marked "vendor" come from the vendors' plan pages as read in November 2026 and can
+change; the figures marked "operator" were read from the dashboards by the operator. Check both before relying on them.
+
+| Resource | Allowance | Use during the grading window | What is left |
+|---|---|---|---|
+| Render free instance hours | 750 hours per month, shared by every free service in the workspace (vendor) | Always on from 28 November to 20 December: 3 days x 24 h = about 72 h in November, 20 days x 24 h = about 480 h in December | About 270 h in December for the other services in the workspace |
+| Neon compute, before this change | 100 CU-hours per project per month (vendor); 1.62 CU-hours used from 8 to 10 November (operator) | The maintenance loop queried the database every 60 s, so an awake service kept the compute awake: 0.25 CU x 24 h = 6 CU-hours per day, about 120 CU-hours over 20 days | Nothing: the allowance would run out and Neon would suspend the database during grading |
+| Neon compute, after this change | the same 100 CU-hours | An idle awake service makes no database call, so the compute suspends after Neon's idle delay and runs only while someone uses the application. Two hours of real use per day at 0.25 CU is 0.5 CU-hours per day, about 10 CU-hours over 20 days (an estimate, not a measurement) | About 90 CU-hours |
+
+What makes the "after" row true, and what the tests prove (`backend/tests/test_idle.py`):
+
+* `/health` makes no database call.
+* The maintenance loop makes a database call only when a transfer expiry is due or snapshot files exist. After an ALLOWED
+  transfer the database is used for at most the retention time (900 s) plus one pass.
+* The connection pool (2 idle, 4 at most, recycled after 280 s, checked on checkout) does nothing while idle.
+* Signing in, every page of the workspace and every API call do use the database. Only `/health` is free.
+
+Operator steps (dashboards change; where this text and the vendor page disagree, the vendor page wins):
+
+1. **Pin Neon compute to 0.25 CU.** In the Neon console open the project, then the branch's compute settings, and set both the
+   minimum and the maximum compute size to 0.25 CU. With autoscaling left on, a busy minute can run at a larger size and use the
+   allowance faster.
+2. **Read Render usage.** In the Render dashboard open the workspace's billing page; it shows the free instance hours used this
+   month across all free services.
+3. **Read Neon usage.** In the Neon console open the project's dashboard or the billing page; it shows the compute CU-hours used
+   this month.
+4. **Keep-alive rule.** The external keep-alive job requests `/health` and nothing else. A keep-alive that loads a page that
+   signs in, or calls any `/api/v1` route, wakes the database every time and brings back the "before" row.
+
+The dates, thresholds and the keep-alive job itself are in the [demo runbook](demo-runbook.md).
 
 ### Audit integrity on a hosted free tier
 

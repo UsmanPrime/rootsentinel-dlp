@@ -53,6 +53,13 @@ The current design serializes evaluation transactions and registry writes; it fa
 correctness and bounded local demos over high throughput. Two HTTP intake/processing
 slots bound simultaneous payload work. Read-only metadata uses independent sessions.
 
+The connection pool is small on purpose (`backend/app/db.py`): two idle connections, at most
+four open (`pool_size=2`, `max_overflow=2`), each replaced after 280 seconds (`pool_recycle`)
+and checked when it is taken from the pool (`pool_pre_ping`). Both checks act only when a
+request or a due maintenance pass takes a connection. An idle process makes no database
+call: `/health` reads no data, and the maintenance loop asks the database only when a
+transfer expiry is due or snapshot files exist (see [transfer protocol](transfer-spec.md)).
+
 ## Reproduction
 
 After configuring external storage and installing the locked dependencies, run from

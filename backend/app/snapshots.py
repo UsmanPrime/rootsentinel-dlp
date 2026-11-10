@@ -42,6 +42,10 @@ class SnapshotStore:
         # unlink never follows a leaf symlink; only generated UUID names accepted.
         self.path(identifier).unlink(missing_ok=True)
 
+    def pending(self):
+        """True when at least one retained snapshot file exists. Reads the directory only, never the database."""
+        return bool(self.candidates(1))
+
     def candidates(self, limit=100):
         import os
         result = []
