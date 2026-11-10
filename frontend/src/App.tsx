@@ -47,7 +47,6 @@ const Incidents = lazy(() => import("./features/incidents/Incidents"));
 const Audit = lazy(() => import("./features/audit/Audit"));
 const Policies = lazy(() => import("./features/policies/Policies"));
 const Guide = lazy(() => import("./features/guide/Guide"));
-const Legacy = lazy(() => import("./Legacy"));
 
 const navigation = [
   { path: "/", name: "Overview", icon: LayoutDashboard, privileged: false },
@@ -398,14 +397,6 @@ export default function App() {
       <SessionProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route
-            path="/legacy"
-            element={
-              <Suspense fallback={<Loading />}>
-                <Legacy />
-              </Suspense>
-            }
-          />
           <Route
             element={
               <Protected>

@@ -135,9 +135,3 @@ class PolicyDecision(Base):
     reason: Mapped[str] = mapped_column(String(40))
     qualifying_versions: Mapped[list] = mapped_column(JSON)
     __table_args__ = (CheckConstraint("outcome IN ('ALLOW','BLOCK','INDETERMINATE')", name="ck_outcome"),)
-
-
-IMMUTABLE_TABLES = (
-    "policy_versions", "registry_revisions", "asset_versions", "asset_chunks",
-    "scan_evaluations", "matching_evidence", "policy_decisions",
-)
