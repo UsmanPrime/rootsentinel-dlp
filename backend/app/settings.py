@@ -13,6 +13,19 @@ SOURCE_ROOT = Path(__file__).resolve().parents[2]
 HOST_PATTERN = re.compile(r"[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::[0-9]{1,5})?")
 # A plain header field name: letters, digits and single inner hyphens, at most 64 characters.
 HEADER_NAME_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+# A Git commit id: 7 to 40 lowercase hex digits. Anything else is reported as "unknown", never echoed.
+COMMIT_PATTERN = re.compile(r"[0-9a-f]{7,40}")
+
+
+def build_commit(environ=None) -> str:
+    """The deployed commit: ROOTSENTINEL_COMMIT (a build argument set by CI or the image build), else the
+    host's RENDER_GIT_COMMIT, else "unknown". Only a well-formed commit id is ever returned."""
+    environ = os.environ if environ is None else environ
+    for name in ("ROOTSENTINEL_COMMIT", "RENDER_GIT_COMMIT"):
+        value = (environ.get(name) or "").strip().lower()
+        if COMMIT_PATTERN.fullmatch(value):
+            return value
+    return "unknown"
 
 
 def _integer(name: str, default: int) -> int:
@@ -45,6 +58,8 @@ class Settings:
     # Optional single-address header set by the edge in front of the host (for example True-Client-IP).
     # Empty keeps the earlier behavior (socket peer, or the hop count above).
     client_ip_header: str = ""
+    # The deployed commit id reported by /health; never a secret (see build_commit).
+    commit: str = "unknown"
 
     @property
     def hosted(self) -> bool:
@@ -74,6 +89,8 @@ class Settings:
             if self.trusted_proxy_hops:
                 raise ValueError("Set either the client IP header or trusted proxy hops, not both")
             object.__setattr__(self, "client_ip_header", name)
+        if self.commit != "unknown" and COMMIT_PATTERN.fullmatch(self.commit) is None:
+            object.__setattr__(self, "commit", "unknown")
         if not 1024 <= self.max_upload_bytes <= 10485760:
             raise ValueError("Upload cap must be 1024 through 10485760 bytes")
         if not 1 <= self.transfer_rate_per_minute <= 120:
@@ -115,6 +132,7 @@ class Settings:
             max_upload_bytes=_integer("ROOTSENTINEL_MAX_UPLOAD_BYTES", 10485760),
             transfer_rate_per_minute=_integer("ROOTSENTINEL_TRANSFER_RATE_PER_MINUTE", 30),
             client_ip_header=os.environ.get("ROOTSENTINEL_CLIENT_IP_HEADER", "").strip(),
+            commit=build_commit(),
         )
 
     def prepare_storage(self):

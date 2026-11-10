@@ -99,7 +99,7 @@ def header(headers, name):
     return next((v for k, v in headers if k.lower() == name), None)
 
 
-def warm_up(gateway: Gateway, limit: float) -> bool:
+def warm_up(gateway: Gateway, limit: float, expect_commit: str | None = None) -> bool:
     started, attempts = time.monotonic(), 0
     while time.monotonic() - started < limit:
         attempts += 1
@@ -109,6 +109,12 @@ def warm_up(gateway: Gateway, limit: float) -> bool:
                 elapsed = time.monotonic() - started
                 report("warm-up: /health answered", True, f"{elapsed:.1f} s, {attempts} attempt(s); this is the cold-start time if the service was asleep")
                 report("gateway reports local mode with release configured", body.get("mode") == "local" and body.get("release_configured") is True)
+                hosted = urlsplit(gateway.origin).scheme == "https"
+                report(f"server reports {'a hosted' if hosted else 'a local'} deployment", body.get("hosted") is hosted, f"hosted={body.get('hosted')}")
+                print(f"INFO  deployed commit: {body.get('commit', 'not reported')}")
+                if expect_commit:
+                    commit = str(body.get("commit", ""))
+                    report("deployed commit matches --expect-commit", len(expect_commit) >= 7 and commit.startswith(expect_commit.lower()), commit)
                 return True
         except (OSError, http.client.HTTPException):
             pass
@@ -262,6 +268,7 @@ def main(argv=None) -> int:
                         f"(default {DEFAULT_ATTEMPTS}); limited expects 401 for the first {PER_CLIENT_WINDOW}, then 429")
     parser.add_argument("--password-file", type=Path, help="one-line file; otherwise a hidden prompt is used")
     parser.add_argument("--warmup-seconds", type=float, default=240)
+    parser.add_argument("--expect-commit", help="fail unless /health reports this commit id (full SHA or a prefix of at least 7 characters)")
     parser.add_argument("--no-frontend", action="store_true", help="do not expect the built frontend at /")
     args = parser.parse_args(argv)
     origin = (args.origin or args.base_url).rstrip("/")
@@ -279,7 +286,7 @@ def main(argv=None) -> int:
     password = args.password_file.read_text(encoding="utf-8").strip() if args.password_file else getpass.getpass("Password: ")
     gateway = Gateway(args.base_url, origin)
 
-    if not warm_up(gateway, args.warmup_seconds):
+    if not warm_up(gateway, args.warmup_seconds, args.expect_commit):
         return 1
     if urlsplit(origin).scheme == "https":
         _, headers, _ = gateway.call("GET", "/health")

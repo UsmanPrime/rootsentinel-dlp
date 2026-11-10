@@ -204,7 +204,7 @@ jobs:
           python -c "import secrets; print(secrets.token_urlsafe(24))" > "$secrets_dir/smoke-password"
           python -B scripts/make_account_hashes.py --out "$secrets_dir/accounts.json" --account ci-analyst:ANALYST --password-file "$secrets_dir/smoke-password"
       - name: Build the hosted image
-        run: docker build -t rootsentinel-hosted:ci .
+        run: docker build --build-arg ROOTSENTINEL_COMMIT="$GITHUB_SHA" -t rootsentinel-hosted:ci .
       - name: Image size within budget
         shell: bash
         run: |
@@ -245,7 +245,7 @@ jobs:
             -v "$RUNNER_TEMP/rs-container-secrets:/etc/secrets:ro" \
             rootsentinel-hosted:ci
       - name: Smoke test (warm-up, hosted headers, login, ALLOW and BLOCK, single use, audit sequence)
-        run: python -B scripts/smoke_public.py --base-url http://127.0.0.1:8000 --origin "$ROOTSENTINEL_CI_ORIGIN" --username ci-analyst --password-file "$RUNNER_TEMP/rs-container-secrets/smoke-password" --warmup-seconds 120
+        run: python -B scripts/smoke_public.py --base-url http://127.0.0.1:8000 --origin "$ROOTSENTINEL_CI_ORIGIN" --username ci-analyst --password-file "$RUNNER_TEMP/rs-container-secrets/smoke-password" --warmup-seconds 120 --expect-commit "$GITHUB_SHA"
       - name: The server process runs without privileges
         shell: bash
         run: |

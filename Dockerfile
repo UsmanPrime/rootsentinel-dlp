@@ -43,5 +43,9 @@ ENV ROOTSENTINEL_MODE=local \
     ROOTSENTINEL_CHECKPOINT_ROOT=/var/lib/rootsentinel/checkpoints \
     ROOTSENTINEL_FRONTEND_DIR=/opt/rootsentinel/frontend \
     ROOTSENTINEL_TRUSTED_PROXY_HOPS=0
+# The deployed commit id, reported by /health. CI passes the Git SHA; on Render the app falls back to the platform's
+# RENDER_GIT_COMMIT at run time. Not a secret; anything that is not a commit id is reported as "unknown".
+ARG ROOTSENTINEL_COMMIT=unknown
+ENV ROOTSENTINEL_COMMIT=${ROOTSENTINEL_COMMIT}
 EXPOSE 10000
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

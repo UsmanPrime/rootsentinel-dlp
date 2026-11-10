@@ -203,31 +203,50 @@ def unidentified_counts(caplog):
     return [r.getMessage() for r in caplog.records if r.name == "rootsentinel.client_ip"]
 
 
-def test_unidentified_counter_counts_every_http_request_not_only_logins(system, caplog):
-    """Health checks, pages and rejected requests without the header all advance the counter (logged at 1, 10, 100...)."""
+def test_unidentified_counter_counts_every_request_except_health_probes(system, caplog):
+    """Pages, API calls and rejected requests without the header advance the counter (logged at 1, 10, 100...).
+    Health probes do not: the hosting platform sends them directly, without the edge header, so they would
+    otherwise fill the warning with noise and hide real requests that arrive without a client address."""
     with caplog.at_level(logging.WARNING, logger="rootsentinel.client_ip"):
         with TestClient(create_app(header_settings(system)), base_url=ORIGIN, raise_server_exceptions=False) as client:
-            assert client.get("/health").status_code == 200
+            for _ in range(5):
+                assert client.get("/health").status_code == 200                                # never counted
+            assert unidentified_counts(caplog) == []
+            assert client.get("/api/v1/auth/me").status_code == 401
             assert unidentified_counts(caplog) == ["client IP header missing or invalid; shared unidentified bucket used (1 request(s) so far)"]
             for _ in range(4):
-                client.get("/health")
-            client.get("/api/v1/auth/me")                                                    # 401, no login
+                client.get("/api/v1/auth/me")
             client.post("/api/v1/auth/logout", headers={"origin": "https://elsewhere.example"})   # 403 ORIGIN_REJECTED
+            client.get("/missing-page")                                                         # not an API route
             for _ in range(3):
-                client.get("/health", headers={HEADER: "198.51.100.7"})                       # valid header: not counted
+                client.get("/api/v1/auth/me", headers={HEADER: "198.51.100.7"})                 # valid header: not counted
+            for _ in range(3):
+                client.get("/health")                                                           # still not counted
             assert len(unidentified_counts(caplog)) == 1
             for _ in range(3):
-                client.get("/health")                                                         # 8th to 10th unidentified request
+                client.get("/api/v1/auth/me")                                                   # 8th to 10th unidentified request
     assert unidentified_counts(caplog)[-1].endswith("(10 request(s) so far)")
+
+
+def test_health_probes_are_counted_separately_and_never_select_a_bucket(system):
+    app = create_app(header_settings(system))
+    with TestClient(app, base_url=ORIGIN, raise_server_exceptions=False) as client:
+        for _ in range(3):
+            client.get("/health")
+        client.get("/health", headers={HEADER: "198.51.100.7"})
+        guard = client.app.middleware_stack
+        while guard is not None and not hasattr(guard, "health_without_client"):
+            guard = getattr(guard, "app", None)
+        assert guard is not None
+        assert guard.health_without_client == 3 and guard.unidentified == 0
 
 
 def test_unidentified_counter_starts_again_in_every_new_process(system, caplog):
     with caplog.at_level(logging.WARNING, logger="rootsentinel.client_ip"):
         for _ in range(2):
             with TestClient(create_app(header_settings(system)), base_url=ORIGIN) as client:
-                client.get("/health")
+                client.get("/api/v1/auth/me")
     assert [m.endswith("(1 request(s) so far)") for m in unidentified_counts(caplog)] == [True, True]
-
 
 def test_a_per_client_429_still_uses_a_global_slot_and_a_global_429_uses_none():
     from app.auth import LoginLimiter

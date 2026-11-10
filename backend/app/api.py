@@ -75,6 +75,37 @@ def forwarded_client(headers, hops):
 # absent value can never select its own rate-limit bucket. It cannot collide with a real address.
 UNIDENTIFIED_CLIENT = "unidentified"
 CLIENT_IP_LOG = logging.getLogger("rootsentinel.client_ip")
+# Peak resident memory (VmHWM) at startup and every MEMORY_LOG_MINUTES minutes. Uvicorn configures only its own loggers,
+# so this logger gets its own stderr handler to make INFO lines visible in the host's log.
+MEMORY_LOG = logging.getLogger("rootsentinel.memory")
+MEMORY_LOG_MINUTES = 10
+# The maintenance loop runs once a minute (expiry recovery, and the memory line every MEMORY_LOG_MINUTES runs).
+MAINTENANCE_SECONDS = 60
+if not MEMORY_LOG.handlers:
+    _memory_handler = logging.StreamHandler()
+    _memory_handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s %(message)s"))
+    MEMORY_LOG.addHandler(_memory_handler)
+MEMORY_LOG.setLevel(logging.INFO)
+
+
+def peak_memory_kib(status_path="/proc/self/status"):
+    """VmHWM in KiB from /proc (Linux), or None where /proc is unavailable (for example on Windows)."""
+    try:
+        with open(status_path, encoding="ascii", errors="replace") as status:
+            for line in status:
+                if line.startswith("VmHWM:"):
+                    fields = line.split()
+                    return int(fields[1]) if len(fields) >= 2 and fields[1].isdigit() else None
+    except OSError:
+        return None
+    return None
+
+
+def log_peak_memory(when, status_path="/proc/self/status"):
+    kib = peak_memory_kib(status_path)
+    if kib is not None:
+        MEMORY_LOG.info("peak resident memory (VmHWM) %s: %d KiB (%.1f MiB)", when, kib, kib / 1024)
+    return kib
 
 
 def header_client(headers, name):
@@ -105,6 +136,9 @@ class RequestGuard:
     def __init__(self, app, settings):
         self.app, self.settings = app, settings
         self.unidentified = 0
+        # Health probes come from the hosting platform itself, not through the edge, so they carry no client
+        # header. They never reach the login limiter; counting them separately keeps the warning above meaningful.
+        self.health_without_client = 0
 
     def client_from_header(self, headers):
         client = header_client(headers, self.settings.client_ip_header)
@@ -122,7 +156,11 @@ class RequestGuard:
         headers = dict(scope["headers"])
         host = headers.get(b"host", b"").decode("latin1")
         permitted = {urlsplit(self.settings.origin).netloc, "127.0.0.1:8000", "localhost:8000", *self.settings.extra_hosts}
-        if self.settings.client_ip_header:
+        if self.settings.client_ip_header and scope["path"] == "/health":
+            forwarded = header_client(scope["headers"], self.settings.client_ip_header)
+            if forwarded is None:
+                self.health_without_client += 1
+        elif self.settings.client_ip_header:
             forwarded = self.client_from_header(scope["headers"])
         else:
             forwarded = forwarded_client(scope["headers"], self.settings.trusted_proxy_hops)
@@ -189,9 +227,15 @@ def create_app(settings: Settings | None = None):
             active_policy(s, state)
         if settings.audit_key_file is not None and settings.checkpoint_root is not None:
             gateway.recover(restart=True)
+        log_peak_memory("at startup")
+
         async def maintenance():
+            minutes = 0
             while True:
-                await asyncio.sleep(60)
+                await asyncio.sleep(MAINTENANCE_SECONDS)
+                minutes += 1
+                if minutes % MEMORY_LOG_MINUTES == 0:
+                    log_peak_memory(f"after {minutes} minutes")
                 try:
                     await run_in_threadpool(gateway.recover)
                 except Exception:
@@ -253,7 +297,10 @@ def create_app(settings: Settings | None = None):
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "mode": settings.mode, "release_configured": settings.mode == "local" and bool(settings.audit_key_file and settings.checkpoint_root)}
+        # hosted: the server's own view (an https origin), so the interface never guesses from the hostname.
+        # commit: the deployed commit id or "unknown"; max_upload_bytes: the upload cap the interface should enforce.
+        return {"status": "ok", "mode": settings.mode, "release_configured": settings.mode == "local" and bool(settings.audit_key_file and settings.checkpoint_root),
+                "hosted": settings.hosted, "commit": settings.commit, "max_upload_bytes": settings.max_upload_bytes}
 
     @app.post("/api/v1/auth/login", response_model=AuthView)
     def login(body: LoginInput, request: Request, response: Response):
