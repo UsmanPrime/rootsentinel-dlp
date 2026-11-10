@@ -1,0 +1,14 @@
+# Reviewed trivy findings for this repository. Each entry has a reason; remove an entry when its reason stops holding.
+
+# DS002 (no USER instruction): by design. The entrypoint starts as root only to copy the two platform secret files
+# into a private 0600 location, then runs every other command as uid 10001 through setpriv. The CI container job
+# asserts that the server process runs as uid 10001.
+DS002
+
+# DS031 (secret in ENV): false positive. ROOTSENTINEL_AUDIT_KEY_FILE holds a file path, not key material; the key
+# arrives at run time as a platform secret file and is never baked into the image.
+DS031
+
+# DS026 (no HEALTHCHECK): the hosting platform probes /health itself, and the Host allow-list means a generic
+# in-container probe would need the public origin as its Host header.
+DS026

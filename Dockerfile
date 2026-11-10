@@ -13,6 +13,10 @@ RUN ROOTSENTINEL_FRONTEND_DIST=/dist npm run build
 
 FROM python:3.13-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+# Apply Debian security updates that the base image tag does not include yet (for example zlib1g).
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
 # An unprivileged account runs the server. The entrypoint starts as root only to copy the secret
 # files into a private location owned by that account, then drops privileges for everything else.
 RUN groupadd --system --gid 10001 rootsentinel \
@@ -20,7 +24,10 @@ RUN groupadd --system --gid 10001 rootsentinel \
  && mkdir -p /var/lib/rootsentinel && chown 10001:10001 /var/lib/rootsentinel && chmod 700 /var/lib/rootsentinel \
  && setpriv --version > /dev/null
 COPY backend/requirements.lock /tmp/requirements.lock
-RUN pip install -r /tmp/requirements.lock && rm /tmp/requirements.lock
+# pip is needed only to install the locked requirements; removing it afterwards also removes its vendored
+# copies of urllib3, msgpack and setuptools, which nothing at run time uses.
+RUN pip install -r /tmp/requirements.lock && rm /tmp/requirements.lock \
+ && python -m pip uninstall -y pip
 WORKDIR /app/backend
 COPY backend/ /app/backend/
 COPY --from=frontend /dist /opt/rootsentinel/frontend
