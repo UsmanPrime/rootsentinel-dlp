@@ -136,7 +136,8 @@ class Demo:
             if self.server.poll() is not None:
                 raise RuntimeError("the disposable gateway exited; see its log")
             try:
-                with urllib.request.urlopen(self.base_url + "/health", timeout=2) as response:
+                # Bandit B310 accepted: base_url is the fixed http://127.0.0.1:<port> URL built above, never user input.
+                with urllib.request.urlopen(self.base_url + "/health", timeout=2) as response:  # nosec B310
                     if response.status == 200 and session.exists():
                         break
             except OSError:
@@ -171,7 +172,8 @@ def run(evidence: Path | None) -> int:
     started = time.time()
     try:
         demo.start()
-        health = json.loads(urllib.request.urlopen(demo.base_url + "/health", timeout=5).read())
+        # Bandit B310 accepted: demo.base_url is the fixed loopback URL of the disposable gateway.
+        health = json.loads(urllib.request.urlopen(demo.base_url + "/health", timeout=5).read())  # nosec B310
         check("gateway is local mode and release is configured", health["mode"] == "local" and health["release_configured"], mode=health["mode"])
 
         folder = demo.work / "corpus"

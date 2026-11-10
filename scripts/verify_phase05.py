@@ -63,6 +63,8 @@ def main() -> int:
     ]
     results = []
     for cwd, command, run_env in checks:
+        # Fixed argument lists (no shell) run with the developer's own environment; nothing comes from untrusted input.
+        # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args
         result = subprocess.run(command, cwd=ROOT / cwd, env=run_env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1200)
         display = ["python" if part == sys.executable else str(part).replace(external, "<external-temp>") for part in command]
         output = tail(clean(result.stdout + result.stderr))
