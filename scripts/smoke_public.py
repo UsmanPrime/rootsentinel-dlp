@@ -291,7 +291,8 @@ def main(argv=None) -> int:
     if urlsplit(origin).scheme == "https":
         _, headers, _ = gateway.call("GET", "/health")
         report("HSTS header present", (header(headers, "strict-transport-security") or "").startswith("max-age="))
-        report("CSP (report-only) header present", "default-src" in (header(headers, "content-security-policy-report-only") or ""))
+        csp = header(headers, "content-security-policy") or ""
+        report("CSP header enforced (not report-only)", "default-src" in csp and "unsafe-inline" not in csp and not header(headers, "content-security-policy-report-only"))
         report("API documentation is not published", gateway.call("GET", "/openapi.json")[0] == 404)
     if not args.no_frontend:
         status, headers, data = gateway.call("GET", "/")

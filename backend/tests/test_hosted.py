@@ -119,14 +119,17 @@ def test_frontend_is_served_with_spa_fallback_and_security_headers(hosted):
         assert response.headers["cache-control"] == "no-store" and response.headers["x-content-type-options"] == "nosniff"
         assert response.headers["x-frame-options"] == "DENY" and response.headers["referrer-policy"] == "no-referrer"
         assert response.headers["strict-transport-security"].startswith("max-age=")
-        csp = response.headers["content-security-policy-report-only"]
+        csp = response.headers["content-security-policy"]                    # enforced, not report-only
         assert "default-src 'none'" in csp and "script-src 'self'" in csp and "frame-ancestors 'none'" in csp
-        assert "content-security-policy" not in response.headers            # report-only for now
+        assert "unsafe-inline" not in csp and "unsafe-eval" not in csp and "data:" not in csp
+        assert "content-security-policy-report-only" not in response.headers
 
 
-def test_local_http_deployment_gets_no_hsts_or_csp(client):
+def test_local_http_deployment_gets_the_enforced_csp_but_no_hsts(client):
     response = client.get("/health")
-    assert "strict-transport-security" not in response.headers and "content-security-policy-report-only" not in response.headers
+    assert "strict-transport-security" not in response.headers                # HSTS only over https
+    assert "default-src 'none'" in response.headers["content-security-policy"]
+    assert "content-security-policy-report-only" not in response.headers
     assert client.get("/openapi.json").status_code == 200                     # development documentation is unchanged
 
 
@@ -187,7 +190,7 @@ def test_every_anonymous_api_route_is_denied_and_nothing_unexpected_is_exposed(h
     assert outside_api == ["/health", "/{path:path}"], "a new unauthenticated route must be reviewed on purpose"
     checked = 0
     for route in app.routes:
-        if not isinstance(route, APIRoute) or not route.path.startswith("/api/v1") or route.path == "/api/v1/auth/login":
+        if not isinstance(route, APIRoute) or not route.path.startswith("/api/v1") or route.path in {"/api/v1/auth/login", "/api/v1/auth/session"}:
             continue
         url = re.sub(r"\{index\}", "0", re.sub(r"\{[a-z_]+\}", str(uuid4()), route.path))
         for method in sorted(route.methods - {"HEAD", "OPTIONS"}):
@@ -199,6 +202,9 @@ def test_every_anonymous_api_route_is_denied_and_nothing_unexpected_is_exposed(h
     wrong = hosted.post("/api/v1/auth/login", json={"username": "nobody", "password": "wrong-password-value"})
     assert wrong.status_code == 401 and "set-cookie" not in wrong.headers and wrong.json()["error"]["code"] == "INVALID_CREDENTIALS"
     assert hosted.get("/health").json()["status"] == "ok"
+    # The public session check reveals nothing without a valid cookie and never sets one.
+    session = hosted.get("/api/v1/auth/session")
+    assert session.status_code == 204 and session.content == b"" and "set-cookie" not in session.headers
 
 
 def test_public_demo_still_denies_every_api_route(system):

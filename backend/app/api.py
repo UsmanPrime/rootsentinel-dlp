@@ -42,11 +42,13 @@ COOKIE = "rs_session"
 RAW_BODY = {"requestBody": {"required": True, "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}}
 
 
-# Report-only until the deployed pages have been observed. The only inline styles are four React style props.
-CSP_REPORT_ONLY = ("default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; "
-                   "font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+# Enforced on every response, locally and hosted. The interface has no inline scripts, inline style attributes or
+# data: URLs; every script, style, image and request is same-origin.
+CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
+       "font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; "
+       "object-src 'none'")
 MANAGED_HEADERS = {b"cache-control", b"x-content-type-options", b"referrer-policy", b"x-frame-options",
-                   b"strict-transport-security", b"content-security-policy-report-only"}
+                   b"strict-transport-security", b"content-security-policy", b"content-security-policy-report-only"}
 
 
 def error_response(code, status):
@@ -193,10 +195,10 @@ class RequestGuard:
             if message["type"] == "http.response.start":
                 started = True
                 added = [(b"cache-control", b"no-store"), (b"x-content-type-options", b"nosniff"),
-                         (b"referrer-policy", b"no-referrer"), (b"x-frame-options", b"DENY")]
+                         (b"referrer-policy", b"no-referrer"), (b"x-frame-options", b"DENY"),
+                         (b"content-security-policy", CSP.encode("ascii"))]
                 if self.settings.hosted:
-                    added += [(b"strict-transport-security", b"max-age=31536000"),
-                              (b"content-security-policy-report-only", CSP_REPORT_ONLY.encode("ascii"))]
+                    added += [(b"strict-transport-security", b"max-age=31536000")]
                 message["headers"] = [(k, v) for k, v in message.get("headers", []) if k.lower() not in MANAGED_HEADERS] + added
             await send(message)
         if failure:
@@ -308,6 +310,19 @@ def create_app(settings: Settings | None = None):
         response.set_cookie(COOKIE, token, max_age=settings.session_seconds, httponly=True,
                             secure=settings.secure_cookies, samesite="strict", path="/api/v1")
         return result
+
+    @app.get("/api/v1/auth/session", response_model=AuthView, responses={204: {"description": "No valid session"}})
+    def session_status(request: Request):
+        """Public session check for the interface: 200 with the session, or 204 when there is none.
+
+        Unlike /auth/me it never answers 401, so a signed-out page load logs no failed request. It reveals only
+        whether the presented cookie is a valid session, which /auth/me already does."""
+        try:
+            actor = auth.authenticate(request.cookies.get(COOKIE))
+        except DomainError:
+            return Response(status_code=204)
+        return AuthView(user=UserView(id=actor.id, username=actor.username, role=actor.role),
+                        csrf_token=csrf_for(request.cookies[COOKIE]))
 
     @app.get("/api/v1/auth/me", response_model=AuthView)
     def me(request: Request, actor: Actor):

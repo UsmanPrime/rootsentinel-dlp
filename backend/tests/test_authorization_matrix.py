@@ -26,6 +26,7 @@ ALLOWED = {ANY: set(ROLES), PRIVILEGED: {"ANALYST", "ADMIN"}, ADMIN_ONLY: {"ADMI
 ACCESS = {
     ("get", "/health"): PUBLIC,
     ("post", "/api/v1/auth/login"): PUBLIC,
+    ("get", "/api/v1/auth/session"): PUBLIC,
     ("get", "/api/v1/auth/me"): ANY,
     ("post", "/api/v1/auth/logout"): ANY,
     ("get", "/api/v1/assets"): PRIVILEGED,
@@ -221,6 +222,28 @@ def test_another_employee_cannot_see_or_release_the_first_employees_records(worl
 
 
 # ---------------------------------------------------------------------------------------------- sessions
+def test_the_session_check_answers_204_without_a_valid_session_and_never_401(system, credentials):
+    from datetime import timedelta
+    from sqlalchemy import update
+    from app.db import now
+    from app.models import SessionRecord
+    app = create_app(system[0])
+    with TestClient(app, base_url="http://127.0.0.1:5173", raise_server_exceptions=False) as client:
+        client.headers["origin"] = system[0].origin
+        assert client.get("/api/v1/auth/session").status_code == 204                          # no cookie
+        client.cookies.set("rs_session", "B" * 43, path="/api/v1")
+        assert client.get("/api/v1/auth/session").status_code == 204                          # forged cookie
+        client.cookies.clear()
+        result = client.post("/api/v1/auth/login", json={"username": "analyst", "password": credentials[0]})
+        session = client.get("/api/v1/auth/session")
+        assert session.status_code == 200 and session.json()["user"]["role"] == "ANALYST"
+        assert session.json()["csrf_token"] == result.json()["csrf_token"]
+        assert "set-cookie" not in session.headers
+        with app.state.db.transaction() as s:
+            s.execute(update(SessionRecord).values(expires_at=now() - timedelta(seconds=1)))
+        assert client.get("/api/v1/auth/session").status_code == 204                          # expired
+        assert client.get("/api/v1/auth/me").status_code == 401                                # unchanged contract
+
 def cookie_of(response):
     return next(v for k, v in response.headers.multi_items() if k.lower() == "set-cookie" and v.startswith("rs_session="))
 
