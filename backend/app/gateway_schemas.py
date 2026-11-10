@@ -93,3 +93,36 @@ class AuditPage(Schema):
     events: list[dict]
     after: int
     limit: int
+
+
+class TransparencyKey(Schema):
+    key_id: str
+    public_key: str
+
+
+class TransparencyKeyView(Schema):
+    algorithm: Literal["Ed25519"]
+    active_key_id: str
+    keys: list[TransparencyKey]
+
+
+class TreeHeadView(Schema):
+    log_id: str
+    tree_size: int
+    root_hash: str
+    timestamp: str
+    key_id: str
+    signature: str
+
+
+class InclusionProofView(Schema):
+    leaf_index: int
+    tree_size: int
+    leaf_hash: str
+    path: list[str]
+
+
+class ConsistencyProofView(Schema):
+    first: int
+    second: int
+    path: list[str]

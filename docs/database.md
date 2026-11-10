@@ -1,7 +1,7 @@
 # Database schema and migrations
 
-SQLAlchemy 2.0 maps seventeen application tables (eleven in `backend/app/models.py`,
-six in `backend/app/gateway_models.py`); Alembic adds its version table.
+SQLAlchemy 2.0 maps eighteen application tables (eleven in `backend/app/models.py`,
+seven in `backend/app/gateway_models.py`); Alembic adds its version table.
 Identifiers are UUID strings except the singleton registry state's fixed key.
 UTC timestamps are timezone-aware in Python/PostgreSQL; SQLite stores UTC values
 and the type adapter restores timezone information on reads.
@@ -94,3 +94,12 @@ are not assumed constrained by application triggers. Independent HMAC verificati
 covered evidence modification. Checkpoints are retained independently, not merely copied
 into the same database. Migration tests include clean schema, downgrade/re-upgrade on
 isolated data and preservation of Phase 02 asset fingerprints during upgrade.
+
+## Migration 0004: signed tree heads
+
+Adds `transparency_heads`: primary key `tree_size` (one head per size, at least 1), `log_id` (foreign key to the
+audit stream id), `root_hash`, `timestamp`, `key_id` and `signature`. Triggers reject UPDATE and DELETE on SQLite
+and PostgreSQL, as for audit events. The migration follows `0002` directly; no revision `0003` exists. It adds no
+data: the first head is signed at the next startup, release or 64th event. Downgrade drops the table and with it
+every stored head, so use it only on disposable databases. See the
+[audit protocol](audit-spec.md#transparency-log-signed-tree-heads-over-the-chain).

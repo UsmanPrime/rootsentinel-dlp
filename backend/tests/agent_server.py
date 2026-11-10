@@ -18,7 +18,7 @@ from alembic.config import Config
 import uvicorn
 
 from app.api import create_app
-from app.audit_keys import provision
+from app.audit_keys import provision, provision_signing
 from app.auth import HASHER
 from app.config import StoragePaths, validate_external_path
 from app.db import Database
@@ -35,9 +35,11 @@ def main():
         paths = StoragePaths(Path(external) / "runtime", Path(external) / "artifacts")
         key_file = Path(external) / "secrets" / "audit-keys.json"
         provision(key_file)
+        signing_file = key_file.parent / "transparency-key.json"
+        provision_signing(signing_file)
         origin = os.environ.get("ROOTSENTINEL_ORIGIN", "http://127.0.0.1:5173")
         settings = Settings(paths, f"sqlite:///{paths.database.as_posix()}", "local", origin=origin,
-                            audit_key_file=key_file, checkpoint_root=Path(external) / "checkpoints")
+                            audit_key_file=key_file, checkpoint_root=Path(external) / "checkpoints", transparency_key_file=signing_file)
         cfg = Config(str(SOURCE_ROOT / "backend/alembic.ini"))
         cfg.attributes["settings"] = settings
         command.upgrade(cfg, "head")

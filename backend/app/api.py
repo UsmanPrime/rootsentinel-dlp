@@ -262,8 +262,12 @@ def create_app(settings: Settings | None = None):
             if state is None:
                 raise RuntimeError("Run migrations before starting the API")
             active_policy(s, state)
+        # Rebuild the audit tree from the stored events and check it against the latest signed tree head. A
+        # mismatch is logged for the operator and leaves the service up with every audited action refused.
+        with db.transaction() as s:
+            log_usable = gateway.audit.startup(s)
         # Either call ends with the one query that sets the gateway's in-memory next due time.
-        if settings.audit_key_file is not None and settings.checkpoint_root is not None:
+        if log_usable and settings.audit_key_file is not None and settings.checkpoint_root is not None:
             gateway.recover(restart=True)
         else:
             gateway.load_due()
@@ -340,7 +344,7 @@ def create_app(settings: Settings | None = None):
     def health():
         # hosted: the server's own view (an https origin), so the interface never guesses from the hostname.
         # commit: the deployed commit id or "unknown"; max_upload_bytes: the upload cap the interface should enforce.
-        return {"status": "ok", "mode": settings.mode, "release_configured": settings.mode == "local" and bool(settings.audit_key_file and settings.checkpoint_root),
+        return {"status": "ok", "mode": settings.mode, "release_configured": settings.mode == "local" and bool(settings.audit_key_file and settings.checkpoint_root and settings.transparency_key_file),
                 "hosted": settings.hosted, "commit": settings.commit, "max_upload_bytes": settings.max_upload_bytes}
 
     @app.post("/api/v1/auth/login", response_model=AuthView)

@@ -32,6 +32,7 @@ from sqlalchemy import update  # noqa: E402
 
 from app import auth as auth_module, gateway_api  # noqa: E402
 from app.api import create_app  # noqa: E402
+from app.crypto.transparency import key_id_for, public_key_of  # noqa: E402
 from app.auth import HASHER  # noqa: E402
 from app.config import StoragePaths  # noqa: E402
 from app.db import Database, now  # noqa: E402
@@ -52,16 +53,23 @@ class RealBackend:
         key = self.root / "keys" / "audit-keys.json"
         key.parent.mkdir(parents=True)
         key.write_text(json.dumps({"version": 1, "active_id": "test", "keys": {"test": base64.b64encode(secrets.token_bytes(32)).decode()}}))
+        signing = key.parent / "transparency-key.json"
+        seed = secrets.token_bytes(32)
+        signing_id = key_id_for(public_key_of(seed))
+        signing.write_text(json.dumps({"version": 1, "algorithm": "Ed25519", "active_id": signing_id,
+                                       "keys": {signing_id: base64.b64encode(seed).decode()}}))
         if os.name != "nt":
             key.parent.chmod(0o700)
             key.chmod(0o600)
+            signing.chmod(0o600)
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]
         self.origin = f"http://127.0.0.1:{port}"
         self.base_url = self.origin
         self.settings = Settings(paths, f"sqlite:///{paths.database.as_posix()}", "local", origin=self.origin,
-                                 audit_key_file=key, checkpoint_root=self.root / "checkpoints")
+                                 audit_key_file=key, checkpoint_root=self.root / "checkpoints",
+                                 transparency_key_file=signing)
         cfg = Config(str(REPO / "backend" / "alembic.ini"))
         cfg.attributes["settings"] = self.settings
         command.upgrade(cfg, "head")

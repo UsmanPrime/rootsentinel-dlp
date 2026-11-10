@@ -15,9 +15,20 @@ from sqlalchemy.engine import make_url
 from app.api import create_app
 from app.auth import HASHER, Principal
 from app.config import StoragePaths
+from app.crypto.transparency import key_id_for, public_key_of
 from app.db import Database
 from app.models import User
 from app.settings import Settings
+
+
+def write_signing_key(path, seeds=None):
+    """A throwaway Ed25519 tree-head signing key file in the documented format. Returns the path."""
+    seeds = seeds or [secrets.token_bytes(32)]
+    ids = [key_id_for(public_key_of(seed)) for seed in seeds]
+    path.write_text(json.dumps({"version": 1, "algorithm": "Ed25519", "active_id": ids[-1],
+                                "keys": {i: base64.b64encode(seed).decode() for i, seed in zip(ids, seeds)}}))
+    path.chmod(0o600)
+    return path
 
 
 @pytest.fixture(scope="session")
@@ -42,7 +53,8 @@ def system(tmp_path, credentials, request):
     key_file = tmp_path / "audit-keys.json"
     key_file.write_text(json.dumps({"version": 1, "active_id": "test", "keys": {"test": base64.b64encode(secrets.token_bytes(32)).decode()}}))
     key_file.chmod(0o600)
-    settings = Settings(paths, url, "local", secure_cookies=False, audit_key_file=key_file, checkpoint_root=tmp_path / "checkpoints")
+    settings = Settings(paths, url, "local", secure_cookies=False, audit_key_file=key_file, checkpoint_root=tmp_path / "checkpoints",
+                        transparency_key_file=write_signing_key(tmp_path / "transparency-key.json"))
     cfg = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     cfg.attributes["settings"] = settings
     command.upgrade(cfg, "head")

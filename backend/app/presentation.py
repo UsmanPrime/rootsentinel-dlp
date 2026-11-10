@@ -69,7 +69,7 @@ def overview(s, actor, settings):
         window_start=start, window_end=observed,
         daily=[DailyCount(date=day.date().isoformat(), total=count) for day, count in zip(days, daily_counts)],
         severity=severity, mode=settings.mode,
-        release_configured=settings.mode == "local" and bool(settings.audit_key_file and settings.checkpoint_root))
+        release_configured=settings.mode == "local" and bool(settings.audit_key_file and settings.checkpoint_root and settings.transparency_key_file))
 
 
 class TreeNode(Schema):

@@ -99,6 +99,9 @@ allowed files without the agent.
   cover. Analysts filter and sort the queue, add notes, resolve incidents and export them as JSON.
 * **Tamper evident audit.** Decisions, releases and incident changes are recorded as events in an HMAC SHA-256 chain, with
   checkpoints stored outside the database. The audit page verifies the chain on demand. See the [audit spec](docs/audit-spec.md).
+* **Audit transparency log.** The audit events also form an RFC 9162 Merkle tree whose root the gateway signs with Ed25519 at
+  every release. The Integrity page checks the signature, an event's inclusion proof and the log's consistency in the browser,
+  and `scripts/witness.py` does the same from outside and verifies exported evidence offline.
 * **Merkle explorer.** Each registered asset version has a Merkle tree over its blocks. The integrity page draws the tree,
   previews a block's proof path, and verifies inclusion proofs for original and tampered blocks.
 * **Role based workspace.** A React interface for three roles: ADMIN manages protected assets and policies, ANALYST
@@ -115,7 +118,8 @@ These rules hold locally and on the hosted demo, and tests cover each one.
   snapshot, and the current policy and registry versions again before it sends a byte.
 * **Release is single use.** A second release of the same transfer is refused, even when a dozen requests race.
 * **A BLOCK never delivers.** Neither do stale, expired or failed transfers. The response carries no file content.
-* **The audit fails closed.** A missing key, a broken chain or a failed checkpoint stops the release.
+* **The audit fails closed.** A missing key, a broken chain, a failed checkpoint or a tree head that cannot be signed and
+  verified stops the release.
 * **Admins have no bypass.** There is no override, and closing an incident does not release the file.
 * **Sessions.** Passwords are hashed with Argon2id. Sessions are random tokens in HttpOnly, SameSite=Strict cookies, marked
   Secure over HTTPS. Every change also needs a CSRF token and the exact Origin. Roles and ownership are checked on the server
@@ -209,9 +213,11 @@ zizmor) were run for the verification evidence; [docs/testing.md](docs/testing.m
   compression or base64 can change every block hash. The tests assert these misses. Content defined chunking, which would
   catch shifted copies, is planned.
 * **One worker.** Rate limits, processing slots and audit ordering assume a single process.
-* **Free tier hosting.** The service sleeps when idle, so the first request waits for a cold start. Audit checkpoints live on
-  the container's disk and are lost on every restart, so the hosted audit chain is tamper evident only within one container
-  lifetime.
+* **Free tier hosting.** The service sleeps when idle, so the first request waits for a cold start. File checkpoints live on the
+  container's disk and are lost on every restart. Signed tree heads are in the database and survive, but a rollback that removes
+  them too is noticed only by someone who kept an earlier head: the browser tab or the witness script.
+* **The signing key is on the host.** Whoever holds it can sign any tree head. The log shows that recorded events were not
+  changed later; it does not show that every action was recorded.
 * **Shared networks share a limit.** A classroom behind one NAT shares one client bucket of 15 sign-ins a minute.
 
 ## Tech stack
@@ -219,7 +225,7 @@ zizmor) were run for the verification evidence; [docs/testing.md](docs/testing.m
 | Area | Technology |
 |---|---|
 | Backend | Python 3.12 and 3.13, FastAPI, Pydantic, SQLAlchemy, Alembic, Uvicorn |
-| Security | `hashlib` SHA-256, HMAC SHA-256 audit chain, Argon2id (`argon2-cffi`), enforced CSP |
+| Security | `hashlib` SHA-256, HMAC SHA-256 audit chain, Ed25519 signed tree heads (`cryptography`), Argon2id (`argon2-cffi`), enforced CSP |
 | Database | SQLite locally, PostgreSQL (Neon) when hosted, via `psycopg` |
 | Frontend | React 19, React Router, TypeScript, Vite, Lucide icons |
 | Frontend tests | Vitest, Testing Library, jsdom, axe-core, Playwright (browser suite), Prettier |
@@ -227,6 +233,7 @@ zizmor) were run for the verification evidence; [docs/testing.md](docs/testing.m
 | Delivery | Docker, Render (free tier), GitHub Actions |
 
 Exact versions are pinned in `backend/requirements.lock`, `backend/requirements-dev.lock` and `frontend/package-lock.json`.
+The Python lock files carry SHA-256 hashes for every package, so an install refuses a changed or unlisted file.
 
 ## Project structure
 
@@ -262,7 +269,7 @@ rootsentinel-dlp/
 | [Detection spec](docs/detection-spec.md) | Matching rules and the misses we test for |
 | [Policy spec](docs/policy-spec.md) | Versioned policies and thresholds |
 | [Transfer spec](docs/transfer-spec.md) | Snapshot, release and transfer states |
-| [Audit spec](docs/audit-spec.md) | HMAC chain, keys and checkpoints |
+| [Audit spec](docs/audit-spec.md) | HMAC chain, keys, checkpoints and the transparency log |
 | [Staging spec](docs/staging-spec.md) | Agent behaviour, provisioning and crash recovery |
 | [Authentication](docs/authentication.md) | Sessions, roles, CSRF and throttling |
 | [API](docs/api.md) | REST contract ([OpenAPI](docs/openapi.json)) |

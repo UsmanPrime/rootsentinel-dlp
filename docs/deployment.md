@@ -25,13 +25,16 @@ $env:ROOTSENTINEL_RUNTIME_ROOT = Join-Path $env:LOCALAPPDATA 'RootSentinel\runti
 $env:ROOTSENTINEL_ARTIFACT_ROOT = Join-Path $env:LOCALAPPDATA 'RootSentinel\artifacts'
 $env:ROOTSENTINEL_AUDIT_KEY_FILE = Join-Path $env:LOCALAPPDATA 'RootSentinel\audit-secrets\audit-keys.json'
 $env:ROOTSENTINEL_CHECKPOINT_ROOT = Join-Path $env:LOCALAPPDATA 'RootSentinel\trusted-checkpoints'
+$env:ROOTSENTINEL_TRANSPARENCY_KEY_FILE = Join-Path $env:LOCALAPPDATA 'RootSentinel\audit-secrets\transparency-key.json'
 python -m app.audit_keys init $env:ROOTSENTINEL_AUDIT_KEY_FILE
+python -m app.audit_keys init-transparency $env:ROOTSENTINEL_TRANSPARENCY_KEY_FILE
 python -m alembic upgrade head
 python -m app.cli --help
 python -m uvicorn app.api:create_app --factory --host 127.0.0.1 --port 8000 --workers 1 --no-access-log --no-proxy-headers
 ```
 
-Run key init once, not on every restart. Bootstrap an account using the existing CLI's
+Run both key commands once, not on every restart. The second creates the Ed25519 key that signs audit tree heads; without
+it nothing can be submitted for release. Bootstrap an account using the existing CLI's
 interactive password prompt; do not embed credentials in commands/history/Git. Use secure
 cookies and HTTPS in any non-loopback environment. `.env.example` contains only
 configuration names, not operational secrets. Environment variables inject the private
@@ -85,7 +88,7 @@ https origin or with insecure cookies.
 One container, one `uvicorn` worker, one origin. The built frontend is served by the backend (`backend/app/static_site.py`, GET and
 HEAD only, SPA fallback, typed JSON 404 for unknown `/api` paths, no path escapes), so cookies stay SameSite=Strict and Origin and
 Host checks are unchanged. The server runs as an unprivileged user (uid 10001). The entrypoint (`docker/entrypoint.sh`) starts as
-root only to copy the two secret files to private 0600 paths, then migrates, runs `python -m app.bootstrap`, and starts the server.
+root only to copy the three secret files to private 0600 paths, then migrates, runs `python -m app.bootstrap`, and starts the server.
 `render.yaml` is a Blueprint with no secret values.
 
 The runtime stage applies Debian security updates (`apt-get upgrade`) and removes `pip` after installing the locked requirements, so
@@ -106,6 +109,7 @@ instruction, DS031 a file path mistaken for a secret, DS026 no `HEALTHCHECK`). A
 | `ROOTSENTINEL_RETENTION_SECONDS` | 1 to 900 | 900 |
 | `ROOTSENTINEL_MAX_UPLOAD_BYTES` | 1024 to 10485760 (default 10 MiB) | 1048576 (1 MiB) |
 | `ROOTSENTINEL_TRANSFER_RATE_PER_MINUTE` | per account, 1 to 120 (default 30) | 10 |
+| `ROOTSENTINEL_TRANSPARENCY_KEY_FILE` | private Ed25519 key file that signs audit tree heads; a separate file from the audit keyring | set by the image; the entrypoint fills it from the secret file `transparency-key.json` |
 | `ROOTSENTINEL_COMMIT` | Docker build argument: the commit `/health` reports. CI passes the Git SHA | not set on Render; the app falls back to Render's `RENDER_GIT_COMMIT` |
 
 The defaults of every new setting reproduce the earlier local behavior exactly. With hops greater than 0 the app trusts the
@@ -152,6 +156,11 @@ subdomains) is added only when hosted. See [frontend](frontend.md#content-securi
 
 * **Audit key file** (`audit-keys.json`): generated on your machine, uploaded as a Render *secret file*, copied by the entrypoint to a
   0600 path. The app reads only files with no group or other permission bits.
+* **Tree-head signing key** (`transparency-key.json`): an Ed25519 key generated on your machine with
+  `python -m app.audit_keys init-transparency`, uploaded as a second Render *secret file* and copied by the entrypoint to a 0600
+  path. It is separate from the audit key file. The container refuses to start without it, because no release is possible without
+  a signed tree head. The command prints only the key id and the path. Back it up offline with the audit key file: if it is lost,
+  stored tree heads can no longer be verified at startup and the audit refuses everything until a new database is started.
 * **Accounts file** (`accounts.json`): usernames, roles and **Argon2id password hashes only**, created locally by
   `scripts/make_account_hashes.py` with hidden prompts. No plaintext password is ever stored on the host. The file is the source of
   truth for the accounts it lists: a changed hash or role is applied and revokes that user's sessions; `"enabled": false` disables
@@ -178,16 +187,21 @@ The dashboards change; where this list and the vendor page disagree, the vendor 
    Set-Location '<repository root>\backend'
    $S = Join-Path $env:LOCALAPPDATA 'RootSentinel\hosted-secrets'
    python -B -m app.audit_keys init "$S\audit-keys.json"
+   python -B -m app.audit_keys init-transparency "$S\transparency-key.json"
    Set-Location '<repository root>'
    python -B scripts\make_account_hashes.py --out "$S\accounts.json" --account presenter-admin:ADMIN --account presenter-analyst:ANALYST --account class-user-1:EMPLOYEE
    ```
-   Back up `audit-keys.json` **offline** (an encrypted drive or a password manager attachment). If it is lost, the audit chain can
-   never be verified again and you must start a new database. Do not store `$S` in OneDrive.
+   Back up `audit-keys.json` and `transparency-key.json` **offline** (an encrypted drive or a password manager attachment). If
+   either is lost, the audit can never be verified again and you must start a new database. Do not store `$S` in OneDrive. The
+   second command prints a `key_id`; note it, it is not secret.
 4. **Render service.** In Render choose New > Blueprint, connect the GitHub repository and the `main` branch (`render.yaml` sets
    `branch: main`; deploy from `main` only). Keep or change the name in `render.yaml`; the public URL becomes
    `https://<name>.onrender.com`. When asked, enter `ROOTSENTINEL_ORIGIN` as that exact URL and `ROOTSENTINEL_DATABASE_URL`.
-5. **Secret files.** In the service's Environment page add two secret files named `audit-keys.json` and `accounts.json`, pasting
-   the file contents into the dashboard form. Saving redeploys. Deleting `$S\accounts.json` locally afterwards is optional.
+5. **Secret files.** In the service's Environment page add three secret files named `audit-keys.json`, `transparency-key.json`
+   and `accounts.json`, pasting the file contents into the dashboard form. Saving redeploys. Deleting `$S\accounts.json` locally
+   afterwards is optional. **An existing deployment needs `transparency-key.json` uploaded before the first deploy of a version
+   that has the transparency log**: without the file the new container refuses to start and Render keeps serving the previous
+   version.
 6. **First deploy and the origin check.** Click deploy and read the public URL. If it is not exactly your `ROOTSENTINEL_ORIGIN`
    (for example Render added a suffix), correct the variable and redeploy. A wrong origin shows as HTTP 400 `HOST_REJECTED`.
 7. **Health check.** Only now set the Health Check Path to `/health` (Render sends the service's own domain as Host).
@@ -241,8 +255,8 @@ Only fake user names are sent; no real password is used. Open `$U/health` first 
   deploys a new commit on the linked branch only if that branch's CI checks pass. An auto-deploy has run (Phase 06A evidence); that
   it waited for the checks is Render's documented behaviour, not something tested here. Render's older `autoDeploy` key is
   deprecated and is not used.
-* **No pushes to `main` on demo day.** Every deploy restarts the service. A restart loses the audit checkpoints (they live on the
-  container's ephemeral disk) and turns any in-flight transfer into `DELIVERY_UNKNOWN`, which must then be repeated. Merge and push
+* **No pushes to `main` on demo day.** Every deploy restarts the service. A restart loses the file checkpoints (they live on the
+  container's ephemeral disk; the signed tree heads are in the database and survive) and turns any in-flight transfer into `DELIVERY_UNKNOWN`, which must then be repeated. Merge and push
   well before the demo, wait for the deploy to finish, and run the smoke test afterwards.
 * A push to `main` therefore deploys the demo by itself once checks are green: treat every push to `main` as a deploy.
 
@@ -290,10 +304,14 @@ The dates, thresholds and the keep-alive job itself are in the [demo runbook](de
 
 * Audit events are chained with an HMAC key held only by the app host, so the database host alone cannot forge or edit them
   undetected: the chain is verified before every release.
-* That is **tamper evidence within one container lifetime**, not durable evidence. Checkpoints are written to the container's
-  disk, which is ephemeral: they are lost on every restart, redeploy and sleep. Bootstrap writes a fresh checkpoint at each start,
-  so after a restart nothing can detect that the newest events were truncated or that the database was rolled back (for example a
-  Neon restore).
+* Signed tree heads over the audit events are stored in the database and survive restarts. At startup the gateway rebuilds the
+  tree and refuses every audited action if it does not match the latest stored head, so an edit or a truncation that leaves the
+  heads in place is detected after a restart.
+* The file checkpoints are still written to the container's disk, which is ephemeral: they are lost on every restart, redeploy
+  and sleep. A database rollback that also removes the stored heads (for example a Neon restore to an earlier time) is **not**
+  detected by the gateway itself. It is detected by anyone who kept an earlier head outside the database: the Audit log tab of
+  the Integrity page keeps the last head a browser saw, and `scripts/witness.py` keeps one in a file
+  (see the [audit protocol](audit-spec.md#transparency-log-signed-tree-heads-over-the-chain)).
 * There is no forensic or compliance claim. Render and Neon account holders can reach the data. Free tiers can restart at any time:
   an in-flight release becomes `DELIVERY_UNKNOWN` and the transfer must be repeated.
 * The audit stream is capped at 20000 events; at the cap everything fails closed. Check the sequence number in the smoke output.

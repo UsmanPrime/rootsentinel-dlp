@@ -60,7 +60,19 @@ def export_incident(s, actor, identifier, audit):
     view = incident_view(s, actor, identifier)
     events = s.scalars(select(AuditEvent).where(AuditEvent.resource_id == view.transfer_id).order_by(AuditEvent.sequence).limit(500)).all()
     audit.append(s, "EVIDENCE_EXPORTED", actor.id, view.transfer_id, incident_id=identifier)
+    bundle, note = None, "Export itself is not signed. Referenced HMAC events require trusted retained keys and checkpoints. Not a court-certified artifact."
+    if audit.log.signing.available:
+        # A signed tree head that covers the export event itself, and for every referenced event the exact
+        # leaf input and its inclusion path, so the bundle can be checked offline with the public key alone.
+        head = audit.sign_head(s)
+        bundle = {"format": "rootsentinel-evidence-v1", "sth": head, "key_id": head["key_id"],
+                  "public_key": audit.log.signing.public_key(head["key_id"]).hex(),
+                  "events": [{"sequence": e.sequence, "canonical": e.canonical, "mac": e.mac,
+                              **audit.log.inclusion(e.sequence - 1, head["tree_size"])} for e in events]}
+        note = ("The transparency section holds an Ed25519 signed tree head and inclusion proofs for the referenced events. "
+                "They show that these events are in the log the head commits to, not what happened outside the gateway. "
+                "The rest of the export is not signed. Not a court-certified artifact.")
     return {"schema_version": 1, "generated_at": now().isoformat(), "generated_by": actor.id,
             "incident": view.model_dump(mode="json"),
             "audit_references": [{"id": e.id, "sequence": e.sequence, "mac": e.mac} for e in events],
-            "authentication": "Export itself is not signed. Referenced HMAC events require trusted retained keys and checkpoints. Not a court-certified artifact."}
+            "transparency": bundle, "authentication": note}

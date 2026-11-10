@@ -26,6 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, Validation
 from sqlalchemy import select, update
 
 from .audit import AuditService, KeyRing
+from .transparency import SigningKeys
 from .auth import HASHER, Principal
 from .db import Database, now
 from .errors import DomainError
@@ -146,7 +147,8 @@ def main(argv=None) -> int:
     settings.prepare_storage()
     db = Database(settings.database_url)
     try:
-        audit = AuditService(KeyRing.load(settings.audit_key_file), settings.checkpoint_root)
+        audit = AuditService(KeyRing.load(settings.audit_key_file), settings.checkpoint_root,
+                             SigningKeys.load(settings.transparency_key_file))
         if args.accounts is not None:
             counts = apply_accounts(db, load_accounts(args.accounts))
             print(f"accounts: created={counts['created']} updated={counts['updated']} unchanged={counts['unchanged']}")

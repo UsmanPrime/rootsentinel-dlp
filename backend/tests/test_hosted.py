@@ -283,7 +283,8 @@ def bootstrap_environment(monkeypatch, system, tmp_path, accounts):
     settings = system[0]
     values = {"ROOTSENTINEL_RUNTIME_ROOT": settings.paths.runtime, "ROOTSENTINEL_ARTIFACT_ROOT": settings.paths.artifacts,
               "ROOTSENTINEL_MODE": "local", "ROOTSENTINEL_ORIGIN": ORIGIN, "ROOTSENTINEL_DATABASE_URL": settings.database_url,
-              "ROOTSENTINEL_AUDIT_KEY_FILE": settings.audit_key_file, "ROOTSENTINEL_CHECKPOINT_ROOT": settings.checkpoint_root}
+              "ROOTSENTINEL_AUDIT_KEY_FILE": settings.audit_key_file, "ROOTSENTINEL_CHECKPOINT_ROOT": settings.checkpoint_root,
+              "ROOTSENTINEL_TRANSPARENCY_KEY_FILE": settings.transparency_key_file}
     for key, value in values.items():
         monkeypatch.setenv(key, str(value))
     return ["--accounts", str(accounts)]

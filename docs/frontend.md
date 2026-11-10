@@ -13,6 +13,7 @@ and native HTML components avoid a framework migration or a charting runtime.
 | `/transfers`, `/transfers/:id` | Intake, evidence, single-use verified download | Authorized records; release remains owner-only |
 | `/assets`, `/assets/:id` | Search, pagination, immutable versions, retirement | ADMIN/ANALYST read; ADMIN mutations |
 | `/integrity?asset=…&version=…` | Server-projected tree, original/tampered proof verification | ADMIN/ANALYST |
+| `/integrity?tab=audit` | Audit log tab: latest signed tree head with its Ed25519 signature verified in the browser (WebCrypto), inclusion proof for a chosen event, consistency with the last head this browser saw (kept in `localStorage`, guarded). Says plainly when the browser has no WebCrypto Ed25519 | ADMIN/ANALYST |
 | `/incidents`, `/incidents/:id` | Investigation, history, sanitized JSON export | ADMIN/ANALYST |
 | `/audit` | Sequence-based events, verification, checkpoints | ADMIN/ANALYST; ADMIN checkpoint |
 | `/policies` | Active policy and immutable history | All read active; ADMIN changes; history privileged |
@@ -154,6 +155,7 @@ inline script. HSTS is added only when the origin is https.
 | `src/api.test.ts` | Same-origin cookies, CSRF only in the header, 401 handling, empty logout responses, fixture byte identity |
 | `src/lib/hooks.test.tsx` | Same-tick double-submission guard, safe error state and intentional retry |
 | `src/lib/quality.test.tsx` | Hosted badge from `/health` (not the hostname), label sanitizer, verdict numbers, incident sorting |
+| `src/lib/transparency.test.ts` | Published tree vectors for inclusion and consistency, rejected changes, canonical encoding, signed-bytes encoding, valid and altered heads, the no-Ed25519 answer, guarded storage |
 | `src/features/integrity/Integrity.test.tsx` | Tampered copies leave the stored proof unchanged, uneven topology, keyboard leaf selection, empty tree |
 | `src/features/transfers/Gateway.test.ts` | Independent hashing of downloaded bytes before saving |
 

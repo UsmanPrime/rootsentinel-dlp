@@ -1,12 +1,13 @@
 # Render Blueprint for the hosted presenter demo (Phase 06A). It contains NO secret values.
-# Secret FILES (audit-keys.json, accounts.json) cannot be declared here: add them in the dashboard
+# Secret FILES (audit-keys.json, transparency-key.json, accounts.json) cannot be declared here: add them in the dashboard
 # (Environment > Secret Files). See docs/deployment.md for the exact checklist.
 # No healthCheckPath on purpose: the /health check needs ROOTSENTINEL_ORIGIN to equal the service's
 # real URL, which is only known after the service exists. Enable it afterwards (checklist step).
 # Deploy policy: deploy from main only, and only after the GitHub checks for the commit pass
 # (autoDeployTrigger: checksPass; the older autoDeploy key is deprecated and deliberately absent).
-# Do not push on demo day: every deploy restarts the service, loses the audit checkpoints
-# (ephemeral container disk) and turns in-flight transfers into DELIVERY_UNKNOWN. See docs/deployment.md.
+# Do not push on demo day: every deploy restarts the service, loses the file checkpoints
+# (ephemeral container disk; the signed tree heads live in the database and survive) and turns in-flight
+# transfers into DELIVERY_UNKNOWN. See docs/deployment.md.
 services:
   - type: web
     name: rootsentinel-dlp            # choose a distinctive name: it becomes https://<name>.onrender.com

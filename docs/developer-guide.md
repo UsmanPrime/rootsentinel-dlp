@@ -23,9 +23,12 @@ before a merge, and a push to `main` deploys the hosted demo once its checks pas
 
 - Python 3.12 or 3.13 (`requires-python = ">=3.12,<3.14"`). CI tests both; the hosted image uses `python:3.13-slim`.
 - Node 22.12 or later and below 25 (`package.json` engines). CI and the image use Node 22.14.0.
-- Cryptographic core: standard library only. Runtime dependencies are pinned in `backend/requirements.lock`, test
-  dependencies in `backend/requirements-dev.lock`, and the optional browser tests (Playwright) in
-  `backend/requirements-browser.lock`.
+- Fingerprint core (`crypto/merkle.py`): standard library only. The audit tree heads are signed with the `cryptography`
+  library. Runtime dependencies are pinned in `backend/requirements.lock`, test dependencies in
+  `backend/requirements-dev.lock`, and the optional browser tests (Playwright) in `backend/requirements-browser.lock`.
+  Every pin lists the SHA-256 of each file published for that version, so `pip install -r` runs in hash-checking mode:
+  to change a dependency, change the pin and replace its hashes with the ones the package index publishes for the new
+  version, and add any new transitive package the same way.
 - Frontend: exact direct versions plus `package-lock.json`; install with `npm ci`.
 - Docker is needed only to build and run the hosted image locally; CI builds it in the `container` job. WSL2 is optional.
 

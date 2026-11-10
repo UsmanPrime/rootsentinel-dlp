@@ -8,20 +8,23 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 import anyio
-from fastapi import Depends, Header, Query, Request
+from fastapi import Depends, Header, Path as FastPath, Query, Request
 from starlette.responses import Response
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy import select
 
+from .audit import MAX_EVENTS
 from .auth import Principal
 from .errors import DomainError
-from .gateway_models import AuditEvent, Incident, Transfer
-from .gateway_schemas import AuditPage, AuditVerification, IncidentPage, IncidentPatch, IncidentView, TransferPage, TransferView, TransferSummary
+from .gateway_models import AuditEvent, Incident, Transfer, TransparencyHead
+from .gateway_schemas import (AuditPage, AuditVerification, ConsistencyProofView, IncidentPage, IncidentPatch, IncidentView, InclusionProofView,
+                              TransferPage, TransferView, TransferSummary, TransparencyKeyView, TreeHeadView)
 from .db import now
 from .incidents import export_incident, incident_view, update_incident
 from .intake import FrozenInput
 from .registry import lock_state
 from .schemas import Label, Schema
+from .transparency import head_view
 from typing import Literal
 
 
@@ -208,6 +211,57 @@ def install_routes(app, principal, intake):
             gateway.audit.append(s, "CHECKPOINT_CREATED", actor.id)
         with db.transaction() as s:
             return gateway.audit.retain_checkpoint(s)
+
+    # ---- audit transparency log. Readable by the roles that can read the audit events; signing on demand is ADMIN only.
+    Size = Annotated[int, Query(ge=1, le=MAX_EVENTS)]
+
+    @app.get("/api/v1/transparency/key", response_model=TransparencyKeyView)
+    def transparency_key(actor: Actor):
+        actor.require("ADMIN", "ANALYST")
+        return gateway.audit.log.keys_view()
+
+    @app.get("/api/v1/transparency/sth", response_model=TreeHeadView)
+    def latest_tree_head(actor: Actor):
+        actor.require("ADMIN", "ANALYST")
+        with db.transaction() as s:
+            row = gateway.audit.log.latest(s)
+            if row is None:
+                raise DomainError("NOT_FOUND", 404)
+            return head_view(row)
+
+    @app.post("/api/v1/transparency/sth", response_model=TreeHeadView)
+    def sign_tree_head(actor: Actor):
+        actor.require("ADMIN")
+        with db.transaction() as s:
+            lock_state(s)
+            return gateway.audit.sign_head(s)
+
+    @app.get("/api/v1/transparency/sth/{size}", response_model=TreeHeadView)
+    def tree_head(size: Annotated[int, FastPath(ge=1, le=MAX_EVENTS)], actor: Actor):
+        actor.require("ADMIN", "ANALYST")
+        with db.transaction() as s:
+            row = s.get(TransparencyHead, size)
+            if row is None:
+                raise DomainError("NOT_FOUND", 404)
+            return head_view(row)
+
+    @app.get("/api/v1/transparency/proof/inclusion", response_model=InclusionProofView)
+    def inclusion_proof(actor: Actor, leaf_index: Annotated[int, Query(ge=0, le=MAX_EVENTS - 1)], tree_size: Size):
+        actor.require("ADMIN", "ANALYST")
+        if leaf_index >= tree_size:
+            raise DomainError("INVALID_REQUEST", 422)
+        with db.transaction() as s:
+            gateway.audit.synced(s)
+            return gateway.audit.log.inclusion(leaf_index, tree_size)
+
+    @app.get("/api/v1/transparency/proof/consistency", response_model=ConsistencyProofView)
+    def consistency_proof(actor: Actor, first: Size, second: Size):
+        actor.require("ADMIN", "ANALYST")
+        if first > second:
+            raise DomainError("INVALID_REQUEST", 422)
+        with db.transaction() as s:
+            gateway.audit.synced(s)
+            return gateway.audit.log.consistency(first, second)
 
     @app.post("/api/v1/transfers-maintenance/expire")
     def expire(actor: Actor):

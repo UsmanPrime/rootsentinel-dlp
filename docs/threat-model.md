@@ -145,9 +145,30 @@ independent of this surface.
 | Privilege on the host | The server runs as uid 10001; root is used only to copy two files (the CI `container` job, a required check, verifies the server uid) | A container escape or a malicious dependency is not addressed |
 | Audit stream filled or fail-closed | Hosted per-account transfer limit (10 per minute in `render.yaml`; the code default is 30), 1 MiB upload cap, the smoke test prints the sequence number; the audit still fails closed at 20000 events | Only authenticated accounts can add events, but a leaked class password can still exhaust the stream; recovery means a new database |
 | Free-tier restarts and sleep | Restart recovery marks interrupted transfers `ERROR` or `DELIVERY_UNKNOWN`; a vanished snapshot makes release fail closed | In-flight demonstrations can be lost; retained snapshots and checkpoints are not durable |
-| Audit rewrite after a restart | The HMAC chain and the key held only by the app host (see "Audit integrity on a hosted free tier") | **Tail truncation and database rollback are undetectable after a restart**: checkpoints live on the ephemeral disk. Not forensic evidence. |
+| Audit rewrite after a restart | The HMAC chain and the key held only by the app host; signed tree heads stored in the database: at startup the tree is rebuilt and must match the latest head, or every audited action is refused (`test_transparency_log.py`) | Truncation or rollback **that also removes the stored heads** is not detected by the gateway itself; it is detected by any party that kept an earlier head outside the database (browser tab, `scripts/witness.py`, an exported bundle). Not forensic evidence. |
 | Uploaded content | Authenticated accounts only; 1 MiB on the hosted demo (code default 10 MiB); never executed or decompressed; removed on BLOCK, release or expiry; the interface asks for synthetic data | The reminder is not a control: a user can still upload real data, and chunk hashes and the label persist in the database |
-| Supply chain | Locked, pinned Python and Node dependencies; base images pinned by tag | No hashes or image digests; the lock file states it is not an attestation |
+| Supply chain | Locked Python and Node dependencies; every Python pin carries SHA-256 hashes, so pip refuses a changed file or an unlisted package; base images pinned by tag | Hashes are those published by the package index at lock time, not an attestation of the source; no image digests |
 
 Gateway invariants are re-asserted in the hosted configuration (`test_hosted_*`): a scan ALLOW is not a release credential, release
 is single use and owner-only, a BLOCK never delivers, and a broken audit chain stops the release.
+
+## Audit transparency log (delta)
+
+What the signed tree heads add to the audit chain, and what they do not. Encodings and key handling are in the
+[cryptographic specification](cryptographic-spec.md#audit-transparency-log-tree-and-signed-tree-heads); behaviour is
+in the [audit protocol](audit-spec.md#transparency-log-signed-tree-heads-over-the-chain).
+
+| Threat | Control (test) | Residual risk |
+|---|---|---|
+| Stored events edited, removed or reordered under a signed head | The head's root no longer matches: refused at startup, by full verify, and by any holder of that head (`test_a_stored_event_altered_before_the_last_head_fails_closed_at_restart`, `test_an_edit_under_a_signed_head_is_caught_by_full_verify_and_at_restart`) | Between restarts a release reads again only the events after the latest head; an edit under it is caught at the next restart or full verify, not by that release |
+| Events after the latest head edited | Read again and checked before every release (`test_only_the_events_after_the_last_head_are_read_again_at_release`) | None added |
+| Database truncated or rolled back | With heads left in place: refused at startup. Under a running process: `AUDIT_LOG_ROLLBACK`. Against a head kept outside the database: the consistency proof fails or the log is smaller (`test_truncating_...`, `test_a_database_rolled_back_under_a_running_process_is_refused`, `test_the_witness_detects_a_rollback_and_keeps_its_saved_head`) | **A party with no earlier head cannot detect a rollback** that also removes the heads; the gateway after a restart is such a party (`test_a_rollback_that_also_removes_the_heads_is_detected_only_with_a_head_kept_outside`) |
+| Stored head edited, replaced or forged | Append-only triggers; one head per size; every use verifies the Ed25519 signature and the root (`test_stored_heads_cannot_be_updated_or_deleted`, `test_an_altered_stored_head_fails_closed_at_restart`) | A database owner can drop the triggers and **delete** heads; they cannot forge one without the signing key |
+| Forked log (two histories shown to different parties) | One head per size in the database; a witness rejects two roots at one size and any head that does not extend its saved one (`test_a_fork_another_log_and_a_tampered_state_are_rejected`) | Two parties that never compare heads can be shown different logs by whoever holds the signing key |
+| Release without a recorded, signed head | Submission and release refuse without the signing key; the release transaction fails unless a head covering `RELEASE_STARTED` is signed and verifies; a failed signing leaves no event and no head (`test_release_is_refused_when_signing_fails_and_nothing_is_left_half_done`) | None added |
+| Signing key stolen | Separate private file, permission checks, never printed, never sent to the browser (`test_the_key_route_shows_public_keys_only`, `test_the_tool_creates_a_private_key_file_...`) | The key lives on the application host: host compromise or the hosting dashboard exposes it, and its holder can sign any head. Heads saved by a witness before the theft keep their meaning |
+| Export altered after download | The bundle's events, proofs and head are checked offline against a pinned key (`test_an_exported_bundle_verifies_offline_and_every_change_is_caught`) | Only the transparency section is covered; the incident text around it is not signed |
+| Proof endpoints used to exhaust the service | Role-gated like the audit events; every parameter bounded; proofs come from memory (`test_every_parameter_is_bounded`) | Each proof request takes the audit head lock briefly |
+
+The log shows that events were recorded and not later changed. It does not show that every action was recorded, and
+it says nothing about what happened outside the gateway.

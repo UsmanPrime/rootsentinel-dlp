@@ -46,6 +46,12 @@ export type ChunkView = {
   "sha256": string;
 };
 
+export type ConsistencyProofView = {
+  "first": number;
+  "path": Array<string>;
+  "second": number;
+};
+
 export type Coverage = {
   "denominator": number;
   "numerator": number;
@@ -116,6 +122,13 @@ export type IncidentView = {
   "severity": string;
   "status": string;
   "transfer_id": string;
+};
+
+export type InclusionProofView = {
+  "leaf_hash": string;
+  "leaf_index": number;
+  "path": Array<string>;
+  "tree_size": number;
 };
 
 export type IntegrityInput = {
@@ -258,6 +271,26 @@ export type TransferView = {
   "release_eligible": boolean;
   "scan": (ScanView | null);
   "state": string;
+};
+
+export type TransparencyKey = {
+  "key_id": string;
+  "public_key": string;
+};
+
+export type TransparencyKeyView = {
+  "active_key_id": string;
+  "algorithm": "Ed25519";
+  "keys": Array<TransparencyKey>;
+};
+
+export type TreeHeadView = {
+  "key_id": string;
+  "log_id": string;
+  "root_hash": string;
+  "signature": string;
+  "timestamp": string;
+  "tree_size": number;
 };
 
 export type TreeNode = {

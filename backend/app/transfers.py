@@ -8,6 +8,7 @@ import time
 from sqlalchemy import select, func
 
 from .audit import AuditService, KeyRing
+from .transparency import SigningKeys
 from .db import now
 from .errors import DomainError
 from .gateway_models import AuditEvent, Incident, ReleaseAttempt, Transfer
@@ -35,7 +36,8 @@ class Gateway:
     def __init__(self, database, settings):
         self.db, self.settings = database, settings
         self.store = SnapshotStore(settings.paths.runtime / "retained")
-        self.audit = AuditService(KeyRing.load(settings.audit_key_file), settings.checkpoint_root)
+        self.audit = AuditService(KeyRing.load(settings.audit_key_file), settings.checkpoint_root,
+                                  SigningKeys.load(settings.transparency_key_file))
         # The earliest expires_at among ALLOWED transfers, or None when there is none. Held in memory so that
         # maintenance can decide without a database call whether anything is due. It may be earlier than the
         # truth (a released transfer leaves its time behind: one extra pass), never later: every writer holds
@@ -92,6 +94,7 @@ class Gateway:
                     raise DomainError("PENDING_TRANSFER_CAPACITY", 429)
                 self.audit.keys.key(self.audit.keys.active_id)
                 self.audit.checkpoint()  # required independent storage available
+                self.audit.log.signing.seed()  # a release needs a signed tree head; refuse before storing anything
                 self.store.save(snapshot)
                 created = True
                 t = Transfer(actor_id=actor.id, idempotency_key=idempotency_key, filename=filename,
@@ -147,9 +150,10 @@ class Gateway:
             session = s.scalar(select(SessionRecord).where(SessionRecord.id == actor.session_id).with_for_update())
             if not session or session.user_id != actor.id or session.revoked_at or session.expires_at <= now() or not user or not user.enabled:
                 raise DomainError("AUTHENTICATION_REQUIRED", 401)
-            verified = self.audit.verify(s)
-            if not verified["valid"]:
-                raise DomainError("AUDIT_VERIFICATION_FAILED", 503)
+            # The signing key must be present, and the stored chain must agree with the latest signed tree head
+            # and the tree in memory. Only the events after that head are read again (docs/audit-spec.md).
+            self.audit.log.signing.seed()
+            self.audit.verify_tail(s)
             self.audit.append(s, "RELEASE_ATTEMPT", actor.id, t.id)
             if t.state != "ALLOWED":
                 failure = DomainError("TRANSFER_NOT_ALLOWED", 409)
@@ -186,7 +190,10 @@ class Gateway:
             else:
                 transition(t, "RELEASE_STARTED", "SINGLE_USE_CONSUMED")
                 s.add(ReleaseAttempt(transfer_id=t.id, actor_id=actor.id, outcome="RELEASE_STARTED"))
-                self.audit.append(s, "RELEASE_STARTED", actor.id, t.id, digest=t.file_sha256, size=t.file_size)
+                started = self.audit.append(s, "RELEASE_STARTED", actor.id, t.id, digest=t.file_sha256, size=t.file_size)
+                # No delivery without a signed and verified tree head that covers the release event itself.
+                if self.audit.sign_head(s)["tree_size"] != started.sequence:
+                    raise DomainError("TREE_HEAD_INVALID", 503)
             snapshot_id = t.snapshot_id if t.state != "SCANNING" else None
         # The verified immutable buffer is independent of subsequent path changes.
         if snapshot_id:

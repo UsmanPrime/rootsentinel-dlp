@@ -210,6 +210,7 @@ jobs:
           secrets_dir="$RUNNER_TEMP/rs-container-secrets"
           mkdir -m 700 "$secrets_dir"
           (cd backend && python -B -m app.audit_keys init "$secrets_dir/audit-keys.json")
+          (cd backend && python -B -m app.audit_keys init-transparency "$secrets_dir/transparency-key.json" > /dev/null)
           python -c "import secrets; print(secrets.token_urlsafe(24))" > "$secrets_dir/smoke-password"
           python -B scripts/make_account_hashes.py --out "$secrets_dir/accounts.json" --account ci-analyst:ANALYST --password-file "$secrets_dir/smoke-password"
       - name: Build the hosted image
@@ -246,6 +247,19 @@ jobs:
           echo "$output"
           test "$status" -ne 0
           echo "$output" | grep -q "ROOTSENTINEL_ORIGIN"
+      - name: The image refuses to start without the tree-head signing key
+        shell: bash
+        run: |
+          only="$RUNNER_TEMP/rs-audit-key-only"
+          mkdir -m 700 "$only"
+          cp "$RUNNER_TEMP/rs-container-secrets/audit-keys.json" "$only/"
+          set +e
+          output="$(docker run --rm -e ROOTSENTINEL_ORIGIN="$ROOTSENTINEL_CI_ORIGIN" -v "$only:/etc/secrets:ro" rootsentinel-hosted:ci 2>&1)"
+          status=$?
+          set -e
+          echo "$output"
+          test "$status" -ne 0
+          echo "$output" | grep -q "transparency signing key"
       - name: Start the container
         shell: bash
         run: |

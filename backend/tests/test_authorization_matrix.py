@@ -58,6 +58,12 @@ ACCESS = {
     ("post", "/api/v1/audit/verify"): PRIVILEGED,
     ("post", "/api/v1/audit/checkpoint"): ADMIN_ONLY,
     ("post", "/api/v1/transfers-maintenance/expire"): ADMIN_ONLY,
+    ("get", "/api/v1/transparency/key"): PRIVILEGED,
+    ("get", "/api/v1/transparency/sth"): PRIVILEGED,
+    ("post", "/api/v1/transparency/sth"): ADMIN_ONLY,
+    ("get", "/api/v1/transparency/sth/{size}"): PRIVILEGED,
+    ("get", "/api/v1/transparency/proof/inclusion"): PRIVILEGED,
+    ("get", "/api/v1/transparency/proof/consistency"): PRIVILEGED,
     ("get", "/api/v1/overview"): ANY,
 }
 PROTECTED = b"SYNTHETIC-PROTECTED-" * 128
@@ -114,7 +120,7 @@ def world(system, credentials):
 
 def call(client, method, path, ids, fresh_transfer=None):
     """One request per operation with a body that is valid but ends in a conflict where it would change state."""
-    route = path.format(asset_id=ids["asset_id"], version_id=ids["version_id"], index=ids["index"], scan_id=ids["scan_id"],
+    route = path.format(asset_id=ids["asset_id"], version_id=ids["version_id"], index=ids["index"], scan_id=ids["scan_id"], size=1,
                         identifier=ids["incident"] if "incidents" in path else (fresh_transfer or ids["transfer"]))
     if path == "/api/v1/assets/{asset_id}/retire":
         route = f"/api/v1/assets/{ids['spare']}/retire"
@@ -129,6 +135,8 @@ def call(client, method, path, ids, fresh_transfer=None):
         ("post", "/api/v1/transfers"): {"content": BENIGN, "headers": {**OCTET, **key}},
         ("post", "/api/v1/transfers/fixtures"): {"json": {"fixture": "benign"}, "headers": key},
         ("patch", "/api/v1/incidents/{identifier}"): {"json": {"expected_revision": 999, "status": "INVESTIGATING", "note": ""}},
+        ("get", "/api/v1/transparency/proof/inclusion"): {"params": {"leaf_index": 0, "tree_size": 1}},
+        ("get", "/api/v1/transparency/proof/consistency"): {"params": {"first": 1, "second": 1}},
     }
     return client.request(method.upper(), route, **bodies.get((method, path), {}))
 

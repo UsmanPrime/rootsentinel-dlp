@@ -374,3 +374,28 @@ def test_snapshot_listing_is_bounded_and_ignores_other_names(client):
         (store.root / f"filler-{index:04d}.txt").write_bytes(b"")
     (store.root / f"{uuid4()}.blob").write_bytes(b"synthetic")
     assert len(store.candidates()) <= 1
+
+
+# ---------------------------------------------------------------------------------------------- transparency log
+def test_an_idle_hour_with_a_populated_transparency_log_makes_no_database_call(system, credentials, monkeypatch):
+    """Signed tree heads are written only inside audited requests and at startup. With events, heads and the
+    tree in memory, an idle process still makes no database call: nothing signs or checks on a timer."""
+    with TestClient(create_app(system[0]), base_url=LOCAL, raise_server_exceptions=False) as client:
+        client.headers["origin"] = system[0].origin
+        result = client.post("/api/v1/auth/login", json={"username": "admin", "password": credentials[0]})
+        client.headers["x-csrf-token"] = result.json()["csrf_token"]
+        assert release(client, submit(client).json()["id"]).content == BENIGN
+        assert client.get("/api/v1/transparency/sth").status_code == 200
+
+    monkeypatch.setattr(api_module, "MAINTENANCE_SECONDS", 0.002)
+    app = create_app(system[0])                                       # restart: the tree is rebuilt at startup
+    ticks = count_ticks(app.state.gateway, monkeypatch)
+    with TestClient(app, base_url=LOCAL) as client:
+        log = app.state.gateway.audit.log
+        assert log.loaded and log.failure is None and log.tree.size >= 5
+        with DatabaseCalls(app.state.db.engine) as calls:
+            for minute in range(10, 61, 10):
+                assert wait_for(lambda: len(ticks) >= minute), "the maintenance loop stopped"
+                assert client.get("/health").status_code == 200
+            assert len(ticks) >= 60
+            assert calls.statements == [] and calls.checkouts == 0

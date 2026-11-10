@@ -115,3 +115,90 @@ verification are fully specified in [audit-spec.md](audit-spec.md). Independent 
 HMAC tests do not reuse the production MAC helper. Download preflight independently hashes
 the actual immutable delivery bytes and compares both digest and byte length with the
 approved scan manifest; the same buffer is sent.
+
+## Audit transparency log: tree and signed tree heads
+
+The fingerprint tree above (`crypto/merkle.py`, profile `rs-fixed-sha256-v1`) is unchanged. The audit log uses a
+second, separate tree in `backend/app/crypto/transparency.py`, built exactly as RFC 9162 section 2.1 defines it. The
+two trees share no code and no domain: an asset proof can never be presented as an audit proof.
+
+### Tree (RFC 9162 section 2.1.1)
+
+| Item | Definition |
+|---|---|
+| Hash | SHA-256, 32 bytes |
+| Empty tree | `SHA-256("")` |
+| Leaf hash | `SHA-256(0x00 || leaf_data)` |
+| Node hash | `SHA-256(0x01 || left || right)` |
+| Split | a tree of `n > 1` leaves splits at `k`, the largest power of two smaller than `n`; `MTH(D[n]) = node(MTH(D[0:k]), MTH(D[k:n]))` |
+| Leaf order | leaf index = audit sequence number minus 1; one leaf per audit event, no gaps |
+
+`leaf_data` for one audit event is the concatenation of three parts:
+
+1. the byte length of the canonical event text as an unsigned 32-bit big-endian integer (4 bytes);
+2. the canonical event text itself, ASCII, exactly the string stored in `audit_events.canonical` and defined in the
+   [audit protocol](audit-spec.md#event-encoding) (sorted keys, no whitespace, ASCII only);
+3. the 32 raw bytes of that event's HMAC (the stored value is 64 lowercase hex characters).
+
+The leaf therefore binds both what the event says and the keyed MAC that links it into the chain.
+
+### Proofs
+
+| Proof | Generation | Verification |
+|---|---|---|
+| Inclusion of leaf `m` in a tree of size `n` | `PATH(m, D[n])`, RFC 9162 section 2.1.3.1 | section 2.1.3.2 |
+| Consistency of size `m` with size `n` | `PROOF(m, D[n])`, section 2.1.4.1 | section 2.1.4.2 |
+
+Two cases outside the RFC text are fixed here. Equal sizes are consistent only with an empty path and equal roots. A
+first size of zero is never accepted: an empty tree proves nothing about a later one. Every proof value is a 32-byte
+hash, written as 64 lowercase hex characters in the API.
+
+An inclusion path does not by itself identify the tree size: two sizes that give a leaf the same path shape accept
+the same path. The size is bound by the signed tree head, whose root belongs to exactly one size.
+
+### Signed tree head
+
+A tree head has five fields. The signed bytes are the 17-byte domain prefix `RootSentinelSTH || 0x00 || 0x01`
+followed by the five fields as canonical JSON: keys in the order `key_id`, `log_id`, `root_hash`, `timestamp`,
+`tree_size`; no whitespace; ASCII only.
+
+| Field | Value |
+|---|---|
+| `log_id` | the audit stream id (a UUID string) |
+| `tree_size` | number of leaves, a JSON integer from 1 to 20000 |
+| `root_hash` | 64 lowercase hex characters |
+| `timestamp` | UTC, `YYYY-MM-DDTHH:MM:SS.ffffffZ`, the same form as event timestamps |
+| `key_id` | 64 lowercase hex characters: SHA-256 of the 32 raw public key bytes |
+
+Example of the signed bytes (the two prefix bytes shown as escapes):
+
+```text
+RootSentinelSTH\x00\x01{"key_id":"<64 hex>","log_id":"6f1c0f0e-5a53-4f0b-9c38-0d6d1c2e9a11","root_hash":"<64 hex>","timestamp":"2026-11-10T12:00:00.000000Z","tree_size":64}
+```
+
+The signature is Ed25519 (RFC 8032) over those bytes, 64 bytes, written as 128 lowercase hex characters. It is made
+with the `cryptography` library; the browser verifies it with WebCrypto and `scripts/witness.py` with `cryptography`
+again, from its own copy of this encoding. A verifier must check two things: that `key_id` is the SHA-256 of the
+public key it trusts, and that the signature verifies under that key.
+
+### Signing key lifecycle
+
+| Stage | Rule |
+|---|---|
+| Generation | `python -m app.audit_keys init-transparency <absolute private path>` on the operator's machine. The seed comes from the library's key generator. The command prints the key id and the path, never key bytes, and never overwrites a file |
+| Storage | A JSON file, mode 0600 in a 0700 directory: `{"version":1,"algorithm":"Ed25519","active_id":<key id>,"keys":{<key id>:<base64 of the 32-byte seed>}}`. It is a separate file from the HMAC keyring and is named by `ROOTSENTINEL_TRANSPARENCY_KEY_FILE`. It is read with the same checks as the keyring (regular file, no links, no group or other access, Windows ACL check). It must not be inside the runtime or source tree |
+| Use | Only the active key signs. The public keys of all keys in the file are served by `GET /api/v1/transparency/key` |
+| Public key for a witness | `python -m app.audit_keys public-transparency <path>` prints the public keys only. A witness pins them in a local file |
+| Rotation, by key id | Stop the worker, back up the file, run `python -m app.audit_keys rotate-transparency <same path>`, restart. The new key becomes active; earlier keys stay in the file so that earlier heads still verify. Each head names the key that signed it. Up to 32 keys. Give the new public key to every witness before it is used |
+| Missing key | No head can be signed, so nothing is accepted for release and no release is made (`TRANSPARENCY_KEY_UNAVAILABLE`). The hosted container refuses to start without the file |
+| Compromise | A holder of the seed can sign any head for any tree. Stop the service, remove the key from use, start a new audit stream in a new database under a new key, and tell every witness to distrust heads under the old key id that it has not already saved. Heads a witness saved before the compromise stay meaningful; later ones do not. Rotation alone does not undo a compromise, because the old key still verifies |
+
+### Published vectors and tests
+
+`backend/tests/test_transparency_tree.py` checks every root, every inclusion proof and every consistency proof for
+tree sizes 1 to 128 against a reference written directly from the RFC definitions, and the roots and proofs used by the
+Certificate Transparency reference implementation for the eight inputs "", `00`, `10`, `2021`, `3031`, `40414243`,
+`5051525354555657`, `606162636465666768696a6b6c6d6e6f` (root of all eight:
+`5dc9da79a70659a9ad559cb701ded9a2ab9d823aad2f4960cfe370eff4604328`). The same vectors are checked by the browser
+code (`frontend/src/lib/transparency.test.ts`) and the witness (`backend/tests/test_witness.py`). RFC 8032 test 1
+fixes the key derivation.

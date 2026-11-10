@@ -16,7 +16,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import event
 from app.auth import AuthService, HASHER, csrf_for
-from app.audit_keys import provision
+from app.audit_keys import provision, provision_signing
 from app.config import StoragePaths
 from app.db import Database
 from app.intake import FrozenInput
@@ -36,8 +36,9 @@ def main():
     with tempfile.TemporaryDirectory(prefix="rootsentinel-gateway-benchmark-") as directory:
         external = Path(directory); paths = StoragePaths(external / "runtime", external / "artifacts")
         key_file = external / "keys" / "audit-keys.json"; provision(key_file)
+        signing_file = external / "keys" / "transparency-key.json"; provision_signing(signing_file)
         settings = Settings(paths, f"sqlite:///{paths.database.as_posix()}", "local", secure_cookies=False,
-            audit_key_file=key_file, checkpoint_root=external / "checkpoints")
+            audit_key_file=key_file, checkpoint_root=external / "checkpoints", transparency_key_file=signing_file)
         cfg = Config(str(ROOT / "backend/alembic.ini")); cfg.attributes["settings"] = settings
         command.upgrade(cfg, "head"); db = Database(settings.database_url)
         @event.listens_for(db.engine, "before_cursor_execute")

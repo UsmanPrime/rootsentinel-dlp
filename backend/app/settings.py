@@ -60,6 +60,8 @@ class Settings:
     client_ip_header: str = ""
     # The deployed commit id reported by /health; never a secret (see build_commit).
     commit: str = "unknown"
+    # The Ed25519 key file that signs audit tree heads. A separate secret from the HMAC keyring above.
+    transparency_key_file: Path | None = None
 
     @property
     def hosted(self) -> bool:
@@ -99,7 +101,7 @@ class Settings:
             raise ValueError("Extra hosts must be exact lowercase host names (optional port); wildcards are not allowed")
         if self.frontend_dir is not None and not self.frontend_dir.is_absolute():
             raise ValueError("The frontend directory must be absolute")
-        for path in (self.audit_key_file, self.checkpoint_root):
+        for path in (self.audit_key_file, self.checkpoint_root, self.transparency_key_file):
             if path is not None:
                 resolved = validate_external_path(path, SOURCE_ROOT)
                 if self.paths.runtime.resolve() in resolved.parents or resolved == self.paths.runtime.resolve():
@@ -133,6 +135,7 @@ class Settings:
             transfer_rate_per_minute=_integer("ROOTSENTINEL_TRANSFER_RATE_PER_MINUTE", 30),
             client_ip_header=os.environ.get("ROOTSENTINEL_CLIENT_IP_HEADER", "").strip(),
             commit=build_commit(),
+            transparency_key_file=Path(os.environ["ROOTSENTINEL_TRANSPARENCY_KEY_FILE"]) if os.environ.get("ROOTSENTINEL_TRANSPARENCY_KEY_FILE") else None,
         )
 
     def prepare_storage(self):

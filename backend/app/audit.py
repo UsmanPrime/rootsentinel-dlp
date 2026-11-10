@@ -6,6 +6,7 @@ import hmac
 import json
 from pathlib import Path
 import re
+import logging
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
@@ -15,8 +16,10 @@ from .db import now, uid
 from .errors import DomainError
 from .gateway_models import AuditEvent, AuditHead
 from .private_files import private_directory, read_private, sync_directory, write_exclusive
+from .transparency import STH_INTERVAL, SigningKeys, TransparencyLog
 
 ZERO = "0" * 64
+LOG = logging.getLogger("rootsentinel.transparency")
 MAX_EVENTS = 20000
 KINDS = {
     "ASSET_REGISTERED", "ASSET_RETIRED", "POLICY_CHANGED", "TRANSFER_SUBMITTED",
@@ -130,6 +133,21 @@ class KeyRing:
             raise DomainError("AUDIT_KEY_UNAVAILABLE", 503) from None
 
 
+def check_event(row, keys, previous):
+    """One stored event: canonical form, identifiers, the link to the previous MAC and its own HMAC.
+
+    Raises ValueError when the event is not what was written, DomainError when its key is unavailable."""
+    payload = EventPayload.model_validate_json(row.canonical)
+    if canonical(payload.model_dump()) != row.canonical or payload.id != row.id or payload.resource_id != row.resource_id:
+        raise ValueError("CANONICAL_MISMATCH")
+    if payload.sequence != row.sequence or payload.stream_id != row.stream_id:
+        raise ValueError("SEQUENCE_MISMATCH")
+    if payload.previous_mac != previous:
+        raise ValueError("LINK_MISMATCH")
+    if not hmac.compare_digest(mac_for(keys.key(payload.key_id), row.canonical), row.mac):
+        raise ValueError("MAC_MISMATCH")
+
+
 def verify_records(rows, keys, stream_id, sequence, expected_mac, checkpoint=None):
     previous, expected = ZERO, 1
     checkpoint_seen = checkpoint is None or checkpoint["sequence"] == 0
@@ -164,8 +182,10 @@ def verify_records(rows, keys, stream_id, sequence, expected_mac, checkpoint=Non
 
 
 class AuditService:
-    def __init__(self, keys, checkpoint_root):
+    def __init__(self, keys, checkpoint_root, signing=None):
         self.keys, self.checkpoint_root = keys, checkpoint_root
+        # The transparency log over this chain. Without a signing key it still tracks the tree but signs nothing.
+        self.log = TransparencyLog(signing if signing is not None else SigningKeys.load(None))
 
     def head(self, s):
         result = s.execute(update(AuditHead).where(AuditHead.id == 1).values(sequence=AuditHead.sequence))
@@ -176,6 +196,7 @@ class AuditService:
     def append(self, s, kind, actor_id=None, resource_id=None, **details):
         key = self.keys.key(self.keys.active_id)
         head = self.head(s)
+        self.log.sync(s, head, self.keys)
         if head.sequence >= MAX_EVENTS:
             raise DomainError("AUDIT_CAPACITY", 503)
         if head.sequence:
@@ -195,7 +216,44 @@ class AuditService:
         s.add(row)
         head.sequence, head.mac = payload.sequence, mac
         s.flush()
+        self.log.extend(s, row)
+        if self.log.signing.available and payload.sequence % STH_INTERVAL == 0:
+            self.log.sign(s, head.stream_id)
         return row
+
+    # ---- transparency log: signed tree heads over this chain (docs/audit-spec.md) ----
+    def synced(self, s):
+        """Lock the audit head and bring the tree in memory up to date with the stored events."""
+        head = self.head(s)
+        self.log.sync(s, head, self.keys)
+        return head
+
+    def sign_head(self, s):
+        """A stored, signed and verified tree head that covers every event written so far in this transaction."""
+        head = self.synced(s)
+        return self.log.sign(s, head.stream_id)
+
+    def verify_tail(self, s):
+        """The check before a release: the latest signed head and every event after it. Raises when it fails."""
+        head = self.synced(s)
+        self.log.check_tail(s, head, self.keys, self.checkpoint())
+
+    def startup(self, s):
+        """Rebuild the tree from the stored events and check it against the latest stored head.
+
+        Returns False when the log is unusable; the reason is logged for the operator and audited actions are
+        refused. When events exist after the latest head and a signing key is configured, a new head is signed."""
+        try:
+            head = self.synced(s)
+            if self.log.signing.available and head.sequence:
+                latest = self.log.latest(s)
+                if latest is None or latest.tree_size < head.sequence:
+                    self.log.sign(s, head.stream_id)
+            return True
+        except DomainError as error:
+            if not self.log.failure:
+                LOG.error("audit transparency log is unavailable at startup (%s); releases are refused", error.code)
+            return False
 
     def checkpoint(self):
         if self.checkpoint_root is None:

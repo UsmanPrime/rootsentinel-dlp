@@ -83,3 +83,15 @@ class AuditEvent(Base):
     resource_id: Mapped[str | None] = mapped_column(String(36), index=True)
     canonical: Mapped[str] = mapped_column(Text)
     mac: Mapped[str] = mapped_column(String(64))
+
+
+class TransparencyHead(Base):
+    """A signed tree head over the first ``tree_size`` audit events. Append-only: migration 0004 adds triggers."""
+    __tablename__ = "transparency_heads"
+    tree_size: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    log_id: Mapped[str] = mapped_column(ForeignKey("audit_heads.stream_id"))
+    root_hash: Mapped[str] = mapped_column(String(64))
+    timestamp: Mapped[str] = mapped_column(String(27))
+    key_id: Mapped[str] = mapped_column(String(64))
+    signature: Mapped[str] = mapped_column(String(128))
+    __table_args__ = (CheckConstraint("tree_size >= 1", name="ck_transparency_head_size"),)

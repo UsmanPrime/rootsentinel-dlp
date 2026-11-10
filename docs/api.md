@@ -105,10 +105,16 @@ offset 0 to 100,000. Errors retain the existing safe INDETERMINATE/release_autho
 | GET /incidents | ADMIN/ANALYST; optional OPEN/INVESTIGATING/RESOLVED status, HIGH/MEDIUM severity and newest/oldest order |
 | GET /incidents/{id} | ADMIN/ANALYST real scan and bounded investigation history |
 | PATCH /incidents/{id} | ADMIN/ANALYST; expected_revision, status, note, resolution |
-| GET /exports/incidents/{id} | ADMIN/ANALYST sanitized JSON; audited export |
+| GET /exports/incidents/{id} | ADMIN/ANALYST sanitized JSON; audited export. With a signing key configured it carries a `transparency` section: a signed tree head and an inclusion proof for every referenced event |
 | GET /audit/events | ADMIN/ANALYST; after sequence 0 to 20,000 and limit 1 to 100 |
 | POST /audit/verify | ADMIN/ANALYST; first-invalid-event result and checked head/checkpoint |
 | POST /audit/checkpoint | ADMIN; verify and retain independent signed head metadata |
+| GET /transparency/key | ADMIN/ANALYST; `algorithm` (`Ed25519`), `active_key_id` and every public key with its key id. Public keys only |
+| GET /transparency/sth | ADMIN/ANALYST; the latest signed tree head; 404 when none has been signed |
+| POST /transparency/sth | ADMIN; sign and store a head for the current log, or return the stored one for that size; 409 on an empty log |
+| GET /transparency/sth/{size} | ADMIN/ANALYST; the stored head of exactly that size, 1 to 20,000; 404 when none |
+| GET /transparency/proof/inclusion | ADMIN/ANALYST; `leaf_index` 0 to 19,999 and `tree_size` 1 to 20,000, index below size; 404 when the size exceeds the log |
+| GET /transparency/proof/consistency | ADMIN/ANALYST; `first` and `second` 1 to 20,000, first not above second; 404 when a size exceeds the log |
 
 The fixture endpoint's `protected` marker is synthetic; it only BLOCKs if its bytes are
 registered. The browser's established eight-block fixtures are a separate deterministic
@@ -151,3 +157,20 @@ With `ROOTSENTINEL_CLIENT_IP_HEADER` set, a `/health` request without a valid he
 counted separately and does not advance the `unidentified` client counter; health probes
 never reach the login limiter. The Host check runs before any client identification, and
 only a route that uses the client key (sign-in) advances the `unidentified` counter.
+
+## Audit transparency log
+
+The transparency routes are readable by the roles that can read the audit events (ADMIN and ANALYST); EMPLOYEE
+gets 403, an anonymous caller 401. Signing on request is ADMIN only and needs the CSRF token like every other
+mutation. All values are lowercase hex except `tree_size`, `leaf_index`, `first` and `second`.
+
+| Response | Fields |
+|---|---|
+| Tree head | `log_id`, `tree_size`, `root_hash`, `timestamp`, `key_id`, `signature` |
+| Inclusion proof | `leaf_index`, `tree_size`, `leaf_hash`, `path` |
+| Consistency proof | `first`, `second`, `path` |
+
+A parameter outside its range answers 422. A size larger than the log, or a head that was never signed, answers
+404. `TRANSPARENCY_KEY_UNAVAILABLE` (503) means no signing key is configured; `AUDIT_LOG_INVALID` and
+`AUDIT_LOG_ROLLBACK` (503) mean the stored log failed its own checks and every audited action is refused.
+How to verify a head and a proof is in the [cryptographic specification](cryptographic-spec.md#audit-transparency-log-tree-and-signed-tree-heads).

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { CheckCheck, FlaskConical, GitBranch } from "lucide-react";
 import { api, jsonBody } from "../../api";
@@ -167,7 +167,45 @@ export function TreeDiagram({
   );
 }
 
+// The audit log tab pulls in the proof and signature checks; it loads only when opened.
+const AuditLog = lazy(() => import("./AuditLog"));
+
+/** Two views of the same page: the fingerprint tree of one asset version, and the signed audit log. */
 export default function Integrity() {
+  const [params, setParams] = useSearchParams();
+  const audit = params.get("tab") === "audit";
+  const tabs = (
+    <div className="tabs" role="tablist" aria-label="Integrity views">
+      <button
+        role="tab"
+        id="tab-tree"
+        aria-selected={!audit}
+        className={audit ? "tab" : "tab selected"}
+        onClick={() => setParams({})}
+      >
+        Fingerprint tree
+      </button>
+      <button
+        role="tab"
+        id="tab-audit"
+        aria-selected={audit}
+        className={audit ? "tab selected" : "tab"}
+        onClick={() => setParams({ tab: "audit" })}
+      >
+        Audit log
+      </button>
+    </div>
+  );
+  return audit ? (
+    <Suspense fallback={<Loading label="Loading the audit log view" />}>
+      <AuditLog tabs={tabs} />
+    </Suspense>
+  ) : (
+    <FingerprintTree tabs={tabs} />
+  );
+}
+
+function FingerprintTree({ tabs }: { tabs: ReactNode }) {
   useTitle("Integrity explorer");
   const { auth } = useSession();
   const [params, setParams] = useSearchParams();
@@ -220,6 +258,7 @@ export default function Integrity() {
         title="Integrity explorer"
         description="Follow one chunk to the trusted root. Verify a real proof, then change a copy and observe the difference."
       />
+      {tabs}
       <Panel
         title="Select a fingerprint version"
         subtitle="Registry metadata only. Source bytes never leave the registry."

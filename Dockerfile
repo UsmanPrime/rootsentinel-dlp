@@ -1,6 +1,6 @@
 # RootSentinel hosted presenter demo image (Phase 06A). One process, one worker, one origin.
 # Build:  docker build -t rootsentinel-hosted .
-# The image contains NO secrets and no data. The audit key and the account hashes arrive as platform
+# The image contains NO secrets and no data. The audit key, the tree-head signing key and the account hashes arrive as platform
 # secret files at run time (see docs/deployment.md); the database is external (PostgreSQL) or, for a
 # disposable test, SQLite inside the container. Base images are pinned by tag, not by digest.
 
@@ -39,7 +39,7 @@ RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && chmod 755 /usr/local/bin/en
 ENV ROOTSENTINEL_MODE=local \
     ROOTSENTINEL_RUNTIME_ROOT=/var/lib/rootsentinel/runtime \
     ROOTSENTINEL_ARTIFACT_ROOT=/var/lib/rootsentinel/artifacts \
-    ROOTSENTINEL_AUDIT_KEY_FILE=/var/lib/rootsentinel/secrets/audit-keys.json \
+    ROOTSENTINEL_AUDIT_KEY_FILE=/var/lib/rootsentinel/secrets/audit-keys.json     ROOTSENTINEL_TRANSPARENCY_KEY_FILE=/var/lib/rootsentinel/secrets/transparency-key.json \
     ROOTSENTINEL_CHECKPOINT_ROOT=/var/lib/rootsentinel/checkpoints \
     ROOTSENTINEL_FRONTEND_DIR=/opt/rootsentinel/frontend \
     ROOTSENTINEL_TRUSTED_PROXY_HOPS=0

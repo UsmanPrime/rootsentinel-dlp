@@ -132,6 +132,23 @@ def main():
             visit("/incidents"); page.get_by_role("combobox", name="Status", exact=True).select_option("INVESTIGATING"); expect(page.get_by_role("link", name=incident_id[:8], exact=True)).to_be_visible(); passed("server-side incident status filter")
             visit("/audit"); page.get_by_role("button", name="Verify audit integrity", exact=True).click(); expect(page.get_by_text("VERIFIED", exact=True)).to_be_visible(); passed("HMAC verification through real API")
             screenshot("audit-desktop"); axe("audit")
+            # Audit log tab: the signed tree head, an inclusion proof and a consistency proof, each checked in the browser
+            # (WebCrypto Ed25519 and SHA-256) under the enforced CSP. The saved head lives in localStorage.
+            visit("/integrity?tab=audit"); expect(page.get_by_role("tab", name="Audit log", exact=True)).to_have_attribute("aria-selected", "true")
+            expect(page.get_by_text("This browser verified the Ed25519 signature", exact=False)).to_be_visible()
+            expect(page.get_by_text("No earlier head is saved in this browser", exact=False)).to_be_visible()
+            page.get_by_role("button", name="Check inclusion of event 1", exact=True).click(); expect(page.get_by_text("is in the tree of size", exact=False)).to_be_visible()
+            saved = page.evaluate("JSON.parse(localStorage.getItem('rootsentinel.tree-head'))"); assert saved["tree_size"] >= 1 and len(saved["root_hash"]) == 64, saved
+            grown = context.request.post(origin + "/api/v1/audit/verify", headers={"Origin": origin, "X-CSRF-Token": csrf()}); assert grown.status == 200 and grown.json()["valid"]
+            head = context.request.post(origin + "/api/v1/transparency/sth", headers={"Origin": origin, "X-CSRF-Token": csrf()}); assert head.status == 200 and head.json()["tree_size"] > saved["tree_size"]
+            page.reload(); ready(); expect(page.get_by_text("The log only grew", exact=False)).to_be_visible(); expect(page.get_by_text("This browser verified the Ed25519 signature", exact=False)).to_be_visible()
+            screenshot("audit-log-desktop"); axe("audit log")
+            page.set_viewport_size({"width": 375, "height": 1000}); visit("/integrity?tab=audit"); expect(page.get_by_text("Unchanged since the last visit", exact=False)).to_be_visible()
+            wide = page.evaluate("[...document.querySelectorAll('main *')].filter(e => !e.closest('.table-scroll') && e.getBoundingClientRect().right > innerWidth + 1).slice(0, 8).map(e => e.tagName + '.' + e.className + ' ' + Math.round(e.getBoundingClientRect().right))")
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), f"overflow audit log 375: {wide}"; axe("audit log mobile"); page.set_viewport_size({"width": 1440, "height": 1000})
+            page.get_by_role("tab", name="Fingerprint tree", exact=True).click(); expect(page.get_by_role("tab", name="Fingerprint tree", exact=True)).to_have_attribute("aria-selected", "true")
+            passed("audit log tab: Ed25519 tree head, inclusion and consistency verified in the browser")
+            visit("/audit")
             page.get_by_role("button", name="Retain checkpoint", exact=True).click(); page.get_by_role("button", name="Confirm checkpoint").click(); expect(page.get_by_text("The backend retained a checkpoint", exact=False)).to_be_visible(); passed("authorized external checkpoint retention")
             # Preserve old asset versions and exercise retirement without affecting primary sample.
             visit(f"/assets/{odd['asset_id']}"); page.get_by_role("button", name="New version", exact=True).click(); page.get_by_label("Registration input").select_option("protected"); page.get_by_role("button", name="Register fingerprints").click(); expect(page.get_by_role("heading", name="Version 2", exact=True)).to_be_visible(); expect(page.get_by_role("heading", name="Version 1", exact=True)).to_be_visible(); passed("immutable version history")

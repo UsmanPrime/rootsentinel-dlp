@@ -14,7 +14,7 @@ from alembic.config import Config
 import uvicorn
 
 from app.api import create_app
-from app.audit_keys import provision
+from app.audit_keys import provision, provision_signing
 from app.auth import HASHER
 from app.config import StoragePaths, validate_external_path
 from app.db import Database
@@ -29,8 +29,10 @@ def main():
         paths = StoragePaths(Path(external) / "runtime", Path(external) / "artifacts")
         key_file = Path(external) / "secrets" / "audit-keys.json"
         provision(key_file)
+        signing_file = key_file.parent / "transparency-key.json"
+        provision_signing(signing_file)
         settings = Settings(paths, f"sqlite:///{paths.database.as_posix()}", "local",
-                            origin=os.environ.get("ROOTSENTINEL_ORIGIN", "http://127.0.0.1:5173"), secure_cookies=False, audit_key_file=key_file, checkpoint_root=Path(external) / "checkpoints",
+                            origin=os.environ.get("ROOTSENTINEL_ORIGIN", "http://127.0.0.1:5173"), secure_cookies=False, audit_key_file=key_file, checkpoint_root=Path(external) / "checkpoints", transparency_key_file=signing_file,
                             # Optional: serve a built interface from the API itself, as the hosted image does (enforced CSP).
                             frontend_dir=Path(os.environ["ROOTSENTINEL_FRONTEND_DIR"]).resolve() if os.environ.get("ROOTSENTINEL_FRONTEND_DIR") else None)
         cfg = Config(str(SOURCE_ROOT / "backend/alembic.ini"))
