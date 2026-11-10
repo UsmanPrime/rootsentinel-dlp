@@ -13,6 +13,7 @@ import type {
   TransferPage,
 } from "../../lib/contracts";
 import { useGet, useTitle } from "../../lib/hooks";
+import { environmentLabel, useEnvironment } from "../../lib/environment";
 import { date, short } from "../../lib/errors";
 import {
   Empty,
@@ -25,6 +26,7 @@ import {
 } from "../../components/ui";
 
 export default function Overview() {
+  const environment = useEnvironment();
   useTitle("Security overview");
   const overview = useGet<OverviewData>("/overview");
   const recent = useGet<TransferPage>("/transfers?limit=6");
@@ -88,7 +90,7 @@ export default function Overview() {
             </span>
             <span>Observed {date(data.observed_at)} · Refresh on demand</span>
             <span className="api-observed">
-              API responded · {data.mode} mode
+              API responded · {environmentLabel(environment.hosted).badge}
             </span>
           </div>
           <div className="metric-grid">
