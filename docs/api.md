@@ -48,7 +48,7 @@ only for consistency after intake. JSON bodies are limited to 32 KiB. Intake has
 evaluation, then the temporary handle is removed. Snapshot UUIDs are correlation IDs;
 there is no retrievable payload store.
 
-Extensions to the master-plan sketch: version creation/list routes, raw rather than
+Extensions to the original route plan: version creation/list routes, raw rather than
 multipart bodies, and a registry-selected baseline for proof verification. The
 cryptographic wire format is unchanged.
 

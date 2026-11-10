@@ -1,10 +1,10 @@
 # Instructor requirements and traceability
 
 Authority: `Project_Overview_and_Deliverables.docx` (O) and
-`Project_Topic_Guide.docx` (T), read directly during Phase 00. Paragraph numbers
+`Project_Topic_Guide.docx` (T), read directly at project start. Paragraph numbers
 are OOXML document-order indices including blank paragraphs, not page numbers.
 Original documents remain outside this repository and must not be published
-without permission. Their hashes were unchanged at Phase 01 intake.
+without permission. Their hashes were unchanged at the first intake.
 
 | Document | SHA-256 |
 |---|---|
@@ -14,10 +14,10 @@ without permission. Their hashes were unchanged at Phase 01 intake.
 ## Mandatory administrative rules
 
 - O P5: exactly three members; one- and two-person groups are not allowed.
-- O P6–8: first-come topic reservation; no duplicate topic within a section;
+- O P6 to P8: first-come topic reservation; no duplicate topic within a section;
   changing another group's entry incurs a penalty of two absolute marks.
-- O P34: **“Update the Topic Selection Sheet with your GitHub repository link and
-  hosted project URL. No submission is required on GCR.”**
+- O P34: **"Update the Topic Selection Sheet with your GitHub repository link and
+  hosted project URL. No submission is required on GCR."**
 - O P35: a thorough technical PDF covering architecture, threat model, library
   choices, implementation hurdles and security analysis belongs on GitHub with
   deployable code.
@@ -27,73 +27,81 @@ without permission. Their hashes were unchanged at Phase 01 intake.
   group presenting immediately afterward.
 
 [Designated Topic Selection Sheet](https://docs.google.com/spreadsheets/d/1DMW-z8OS7DDUZSGB8PtRbnAUT-8Aa6P75jC5kcHvPU8/edit?usp=sharing).
-Its reservation state has not been verified or modified. Team names, submission
+Its reservation state has not been verified or modified from this repository. Team names, submission
 deadline, report length and presentation duration are not established here.
 
 ## Traceability
 
-| ID | Source | Requirement | Planned evidence / status |
+| ID | Source | Requirement | Status and evidence |
 |---|---|---|---|
-| C01 | O P5 | Three students | Actual contributor table/history; pending |
-| C02 | O P6–8 | Valid reservation | Team checks its sheet entry; pending |
-| C03 | T P13 | SHA-256 and block fingerprints | Phase 01 library/tests implemented; matcher later |
-| C04 | T P13 | Merkle integrity/proofs | Phase 01 library/tests/spec implemented |
-| C05 | T P14 | Detect/block unauthorized source transfers | Phase 02–03 gateway tests; pending |
-| C06 | T P15 | Staging-directory gateway scenario | Phase 05: Windows-primary agent, Linux CI proof ([staging-spec](staging-spec.md)); hosted CI passed, run 42268818788 ([evidence](evidence/phase-05.md)) |
-| C07 | O P13 | Established cryptographic libraries | hashlib implemented; hmac planned |
-| C08 | O P14 | Key generation/distribution/storage/revocation | Lifecycle design; implementation pending |
-| C09 | O P15 | Explicit threat model | Architecture document; evolve with implementation |
-| C10 | O P17 | Modular architecture | Detection/policy/enforcement separation planned |
-| C11 | O P18 | Data/protocol diagrams | TLS/plaintext boundaries documented |
-| C12 | O P19 | Secure integration | Bounded crypto and proof validation now; gateway security later |
-| C13 | O P21–22 | End-to-end responsive full stack | Preview only; operational application pending |
-| C14 | O P23 | Onboarding/tooltips | Guided workflow pending |
-| C15 | O P24 | API, secure sessions, persistence | Later phases |
-| C16 | O P26 | GitHub, clean history, README | Correct local origin/main; owner verified empty remote; checkpoint evidence in Phase 01 report; publication pending |
-| C17 | O P27 | Free public hosting | Phase 06A: container, bootstrap, hosted configuration and smoke test implemented ([deployment](deployment.md)); **not deployed, no deployed measurements** |
-| C18 | O P28 | REST/WebSocket integration | REST P0, WebSocket P1; not implemented |
-| C19 | O P30 | Attack surface mapping | Threat model baseline |
-| C20 | O P31 | Empirical attacks and mitigations | Proof corruption tested; operational attacks pending |
-| C21 | O P32 | Security/usability evaluation | Methodology specified; measurements pending |
-| C22 | O P34 | Sheet submission; no GCR | Student submission checklist; pending |
-| C23 | O P35 | Technical PDF | Markdown sources started; final PDF pending |
-| C24 | O P36 | Presentation and no slide reading | Deck/notes/rehearsal pending |
-| C25 | O P37 | Deployed live demonstration | P0-A release gate; pending |
+| C01 | O P5 | Three students | Usman Ibrahim, Alishba Inam, Amna Zainab (README). Planned responsibilities: A crypto, detection and threat model; B interface, evidence and onboarding; C backend, authentication, audit and deployment. Actual contributions are documented in the final report, not invented here |
+| C02 | O P6 to P8 | Valid reservation | Team checks its sheet entry; pending |
+| C03 | T P13 | SHA-256 and block fingerprints | Implemented: `backend/app/crypto`, `backend/app/detection.py`; tests `test_crypto.py`, `test_detection_policy.py` |
+| C04 | T P13 | Merkle integrity/proofs | Implemented: [cryptographic spec](cryptographic-spec.md), Merkle explorer in the workspace |
+| C05 | T P14 | Detect/block unauthorized source transfers | Implemented: controlled release ([transfer spec](transfer-spec.md), `test_gateway.py`) and staging agent ([staging spec](staging-spec.md)) |
+| C06 | T P15 | Staging-directory gateway scenario | Windows-primary agent with Linux CI proof ([staging spec](staging-spec.md), [Phase 05 evidence](evidence/phase-05.md)) |
+| C07 | O P13 | Established cryptographic libraries | `hashlib` (SHA-256), `hmac` (HMAC-SHA256 audit chain, `backend/app/audit.py`), `argon2-cffi` (Argon2id passwords) |
+| C08 | O P14 | Key generation/distribution/storage/revocation | Audit keyring generation and rotation (`python -m app.audit_keys init` / `rotate`, old verification keys kept), private-file checks, hosted distribution as a platform secret file ([deployment](deployment.md)); session revocation ([authentication](authentication.md)); key compromise handling is a manual procedure ([audit spec](audit-spec.md)) |
+| C09 | O P15 | Explicit threat model | [Threat model](threat-model.md) |
+| C10 | O P17 | Modular architecture | Detection, policy and enforcement are separate modules (`detection.py`, `policy.py`, `transfers.py`) plus the separate agent ([architecture](architecture.md)) |
+| C11 | O P18 | Data/protocol diagrams | TLS and plaintext boundaries, flow and sequence diagrams ([architecture](architecture.md)) |
+| C12 | O P19 | Secure integration | Bounded crypto and proof validation; authenticated single-use release gateway ([transfer spec](transfer-spec.md)) |
+| C13 | O P21 to P22 | End-to-end responsive full stack | React workspace ([frontend](frontend.md)), deployed at https://rootsentinel-dlp.onrender.com |
+| C14 | O P23 | Onboarding/tooltips | Guided synthetic walkthrough at `/guide` and a skippable first-run tour ([frontend](frontend.md)) |
+| C15 | O P24 | API, secure sessions, persistence | REST API ([api](api.md), [OpenAPI](openapi.json)), server sessions ([authentication](authentication.md)), SQLite and PostgreSQL persistence ([database](database.md)) |
+| C16 | O P26 | GitHub, clean history, README | Published on GitHub `main`; every phase tagged `phase-01` to `phase-06a` ([evidence index](evidence/README.md)) |
+| C17 | O P27 | Free public hosting | Deployed on the Render free tier with Neon PostgreSQL: https://rootsentinel-dlp.onrender.com ([Phase 06A evidence](evidence/phase-06a.md)) |
+| C18 | O P28 | REST/WebSocket integration | REST implemented; WebSocket (P1) not implemented |
+| C19 | O P30 | Attack surface mapping | [Threat model](threat-model.md) tables per boundary |
+| C20 | O P31 | Empirical attacks and mitigations | Tested: proof corruption, forged and replayed release, CSRF, Origin and Host, session handling, rate limits, client IP spoofing, audit tampering ([testing](testing.md), [quality review](evidence/quality-review.md)) |
+| C21 | O P32 | Security/usability evaluation | Local benchmarks (Phase 02 and 03 evidence), deployed cold start and sign-in time ([Phase 06A](evidence/phase-06a.md)), automated axe and Lighthouse checks ([quality review](evidence/quality-review.md)); no user usability study |
+| C22 | O P34 | Sheet submission; no GCR | Team action; pending |
+| C23 | O P35 | Technical PDF | Markdown sources in `docs/`; final PDF pending |
+| C24 | O P36 | Presentation and no slide reading | Deck, notes and rehearsal pending |
+| C25 | O P37 | Deployed live demonstration | Deployed and smoke-tested; classroom demonstration pending |
 | C26 | O P38 | Questions for following group | Team preparation; pending |
 
-Interpretations are explicit: hashes are not ciphertext; TLS provides the relevant
-transport encryption in protocol diagrams. “Instantly block” means no release
-before an allowed decision, not zero latency. REST is the baseline interpretation
-of “REST/WebSocket endpoints”; any instructor demand for both must be confirmed.
-The local gateway is mandatory to deliver, though not required to run with the
-public server. Three days is the Codex resource window, not a university deadline.
+## Interpretations
 
-## Phase 02 traceability update
+Hashes are not ciphertext; TLS provides the relevant transport encryption in protocol diagrams. "Instantly block" means
+no delivery before a persisted ALLOW, not zero latency. REST is the baseline interpretation of "REST/WebSocket
+endpoints"; any instructor demand for both must be confirmed. The local gateway is mandatory to deliver, though not
+required to run with the public server. The three-day plan was an internal time budget, not a university deadline.
 
-Source requirements and paragraph references above are unchanged. Their original
-status descriptions are the Phase 01 snapshot. Phase 02 advances:
+C06 (the local staging-directory gateway) is addressed by the staging agent in [staging-spec.md](staging-spec.md). The
+Topic Guide text does not require Linux; the earlier "Linux/WSL2 demo" wording was this project's own interpretation.
+Because WSL2 was not a usable runtime on the development machine (its only Python was outside the supported range), the
+agent is **Windows-primary** with POSIX behavior proven by a Linux CI job, and a Windows CI job. A WSL2 run is optional
+and was not performed as evidence. The agent controls only its outbound directory; USB, e-mail, clipboard, other
+applications and direct copying are not covered.
 
-- C03/C10/C12: indexed exact/block detection and separated deterministic policy,
-  bounded intake and failure tests; final enforcement remains Phase 03.
-- C08/C15: opaque sessions, password hashing, revocation, roles, persistence and
-  documented REST endpoints. Authenticated audit keys remain unimplemented.
-- C13/C14: minimal responsive real-backend local workbench; full onboarding and
-  public hosting remain later work.
-- C16: Phase 01 published; Phase 02 checkpoint/publication status is in its evidence.
-- C18/C20/C21: REST and reproducible detection/security/browser tests plus measured
-  local benchmarks. WebSockets remain P1; no enterprise or universal-DLP claim.
-- C09/C19: implemented threat model and remaining boundary assumptions documented.
+## Scope and priorities
 
-Three named contributors, topic-sheet confirmation, local staging delivery, public
-deployment, final report/PDF, presentation and submission remain overall-project
-deliverables. Phase 02 does not claim the entire course project is complete.
+**P0 (required):** SHA-256, block and Merkle core; immutable registry; matching and simple policy; controlled browser
+release; local staging agent; authentication and authorization; incident evidence; audit integrity; persistence; basic
+dashboard and onboarding; public deployment; required tests, empirical evaluation, report, manual and slides.
 
-## Phase 05 traceability update
+**P1 (enhancements):** content-defined chunking, WebSockets, scoped exceptions, richer filters and charts, an interactive
+lab.
 
-C06 (the local staging-directory gateway) is addressed by the staging agent in
-[staging-spec.md](staging-spec.md). The Topic Guide text does not require Linux; the earlier "Linux/WSL2 demo"
-wording was this project's own interpretation. Because WSL2 was not a usable runtime on the development machine
-(its only Python was outside the supported range), the agent is **Windows-primary** with POSIX behavior proven by a
-Linux CI job, and a Windows CI job. A WSL2 run is optional and was not performed as evidence. The statement that
-"instantly block" means no delivery before a persisted ALLOW is unchanged. The agent controls only its outbound
-directory; USB, e-mail, clipboard, other applications and direct copying are not covered.
+**P2 (out of scope):** a native Windows service or installer, kernel- or driver-level interception, archive
+normalization and semantic matching, enterprise identity, external audit anchoring, arbitrary forwarding and broader
+operating system controls.
+
+Fixed 1 KiB chunks come first; content-defined chunking is an enhancement. Free hosting is required, with no production
+reliability claim for free tiers.
+
+## Release and academic package
+
+Checklist of course deliverables, with C-IDs where the table above tracks them:
+
+- Public GitHub repository with README and clean history (C16).
+- Technical report as PDF (C23), with architecture and threat diagrams, the cryptographic specification, security tests
+  and raw evaluation, deployment, API and developer guides, and limitations and future work.
+- User manual.
+- Presentation with speaker notes, rehearsed without reading slides (C24).
+- Live browser and local agent demonstration script (C25).
+- Viva preparation and questions for the next presenting group (C26).
+- Topic sheet updated with the repository and hosted URLs; nothing submitted on GCR (C22).
+
+CV claims must reflect actual results. Never fabricate deployment, tests, benchmarks, membership or topic reservation.

@@ -18,7 +18,23 @@ RULES = {
     "private_posix_home": rb"/(?:home|Users)/[a-zA-Z0-9_.-]+/",
 }
 FORBIDDEN_SUFFIXES = {".docx", ".db", ".sqlite", ".sqlite3", ".pem", ".key", ".p12", ".pyc", ".log"}
-FORBIDDEN_PARTS = {"node_modules", "__pycache__", ".venv", ".aws", ".codex", ".agents", "runtime", "private", "secrets", "dist", "uploads", "snapshots"}
+FORBIDDEN_PARTS = {"node_modules", "__pycache__", ".venv", ".aws", "runtime", "private", "secrets", "dist", "uploads", "snapshots"}
+# Hidden directories hold local tool, editor and credential state. Only CI configuration may be published.
+ALLOWED_HIDDEN_DIRS = {".github"}
+# Root-level notes: only these documents are published; any other root .md file is treated as a local note.
+ALLOWED_ROOT_NOTES = {"README.md", "SECURITY.md", "CONTRIBUTING.md"}
+
+
+def private_or_generated(path: Path) -> bool:
+    parts = path.relative_to(ROOT).parts
+    return (path.is_symlink() or path.suffix.lower() in FORBIDDEN_SUFFIXES or bool(FORBIDDEN_PARTS.intersection(parts))
+            or any(part.startswith(".") and part not in ALLOWED_HIDDEN_DIRS for part in parts[:-1])
+            or (path.name.startswith(".env") and path.name != ".env.example"))
+
+
+def unlisted_root_note(path: Path) -> bool:
+    parts = path.relative_to(ROOT).parts
+    return len(parts) == 1 and path.suffix.lower() == ".md" and path.name not in ALLOWED_ROOT_NOTES
 
 
 def audit():
@@ -29,8 +45,10 @@ def audit():
         if not path.exists():
             findings.append({"file": name, "rule": "missing_file"})
             continue
-        if path.is_symlink() or path.suffix.lower() in FORBIDDEN_SUFFIXES or FORBIDDEN_PARTS.intersection(path.relative_to(ROOT).parts) or (path.name.startswith(".env") and path.name != ".env.example"):
+        if private_or_generated(path):
             findings.append({"file": name, "rule": "private_or_generated_file"})
+        if unlisted_root_note(path):
+            findings.append({"file": name, "rule": "unlisted_root_note"})
         data = path.read_bytes()
         inventory[name] = hashlib.sha256(data).hexdigest()
         for rule, pattern in RULES.items():

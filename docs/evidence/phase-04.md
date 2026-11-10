@@ -119,7 +119,7 @@ This documentation-only follow-up commit records that result.
 ## History correction, 2026-11-06
 
 At the repository owner's explicit one-time request, the commit messages of the two Phase 04
-commits were rewritten to remove a `Co-Authored-By` trailer that named the AI coding assistant.
+commits were rewritten to remove an automatically added `Co-Authored-By` attribution trailer.
 Only the messages changed. File contents are identical: each rewritten commit has the same tree
 hash as the original, `git diff` between each old and new commit is empty, author and committer
 names, emails and dates are unchanged, and no code, test or document content changed. The

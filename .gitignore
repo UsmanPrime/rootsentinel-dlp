@@ -30,7 +30,9 @@ coverage/
 htmlcov/
 test-results/
 playwright-report/
-.playwright-mcp/
+# Local tool, editor and credential state in hidden folders; only CI configuration is published.
+/.*/
+!/.github/
 *.log
 .DS_Store
 Thumbs.db

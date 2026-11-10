@@ -14,14 +14,15 @@ gateway and, for the agent, only to what reaches its outbound directory. Merkle 
 
 ## Phases
 
-| Phase | Record | Summary |
-|---|---|---|
-| 01 | [phase-01.md](phase-01.md), [checks](phase-01-final-checks.json) | Cryptographic core |
-| 02 | [phase-02.md](phase-02.md), [checks](phase-02-checks.json), [benchmark](phase-02-benchmark.json), [browser](phase-02-browser.json), [checkpoint](phase-02-checkpoint.json) | Registry, detection, policy, authentication |
-| 03 | [phase-03.md](phase-03.md), [checks](phase-03-checks.json), [benchmark](phase-03-benchmark.json), [browser](phase-03-browser.json), [checkpoint](phase-03-checkpoint.json), [publication audit](phase-03-publication-audit.json) | Controlled transfer and audit |
-| 04 | [phase-04.md](phase-04.md), [browser](phase-04-browser.json), [negative browser](phase-04-negative-browser.json), [publication audit](phase-04-publication-audit.json), [screenshots](phase-04/) | Role-aware workspace |
-| 05 | [phase-05.md](phase-05.md), [checks](phase-05-checks.json), [demo](phase-05-demo.json), [hosted CI](phase-05-hosted-ci.json) | Local staging gateway agent |
-| 06A | [phase-06a.md](phase-06a.md) | Hosted presenter demo |
+| Phase | Record | Summary | Gate |
+|---|---|---|---|
+| 01 | [phase-01.md](phase-01.md), [checks](phase-01-final-checks.json) | Cryptographic core | Crypto tests and build pass; pinned test installation verified |
+| 02 | [phase-02.md](phase-02.md), [checks](phase-02-checks.json), [benchmark](phase-02-benchmark.json), [browser](phase-02-browser.json), [checkpoint](phase-02-checkpoint.json) | Registry, detection, policy, authentication | Authorization, immutable versions, deterministic matching |
+| 03 | [phase-03.md](phase-03.md), [checks](phase-03-checks.json), [benchmark](phase-03-benchmark.json), [browser](phase-03-browser.json), [checkpoint](phase-03-checkpoint.json), [publication audit](phase-03-publication-audit.json) | Controlled transfer and audit | Blocked bytes never released; allowed bytes equal the scanned snapshot |
+| 04 | [phase-04.md](phase-04.md), [browser](phase-04-browser.json), [negative browser](phase-04-negative-browser.json), [publication audit](phase-04-publication-audit.json), [screenshots](phase-04/) | Role-aware workspace | Real backend journeys, accessible evidence and errors |
+| 05 | [phase-05.md](phase-05.md), [checks](phase-05-checks.json), [demo](phase-05-demo.json), [hosted CI](phase-05-hosted-ci.json) | Local staging gateway agent | Safe admission, idempotent verified delivery, measured scenarios |
+| 06A | [phase-06a.md](phase-06a.md) | Hosted presenter demo | Public smoke test and deployed measurements |
+| Review | [quality-review.md](quality-review.md) | Repository-wide quality pass: tests, scanners, documents, interface | All suites and CI green, no unresolved high or critical findings |
 
 ### Phase 01: cryptographic core
 

@@ -213,7 +213,6 @@ rootsentinel-dlp/
 | [Developer guide](docs/developer-guide.md) | Toolchain, storage rules, repository rules |
 | [Testing](docs/testing.md) | Test strategy |
 | [Requirements](docs/requirements.md) | Course requirements and traceability |
-| [Master plan](docs/master-plan.md) | Phase plan |
 | [Research](docs/research.md) | References |
 | [Evidence](docs/evidence/README.md) | Verification record for every phase |
 

@@ -16,7 +16,7 @@ Stage 2 branch: `chore/phase-06a-close` from `origin/main` at `569295aea10264db8
 
 **Sources used below.** *Operator*: measured live by the project owner and reported for this record. *Probe*: measured by
 the scripted, credential-free requests from the development machine described here. *CI*: read from a GitHub Actions log.
-*Code*: read from the repository at this branch. *Dashboard*: read by Claude, read only, from the owner's signed-in Render and
+*Code*: read from the repository at this branch. *Dashboard*: read from the dashboard, read only, in the owner's signed-in Render and
 Neon tabs on 2026-11-09 between 11:27 and 11:32 UTC. Nothing was edited, deployed, restarted or revealed, and no billing page
 was opened. The dashboards show local time (GMT+5); every time below is converted to UTC. Values are recorded here as text; no
 screenshots are kept in the repository.

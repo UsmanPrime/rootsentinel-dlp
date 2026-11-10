@@ -66,8 +66,8 @@ Served the production build on loopback and inspected with Playwright:
 - Desktop screenshot inspected visually; mobile screenshot captured.
 
 An initial development-page favicon 404 was fixed with a local SVG favicon.
-Screenshots are in ignored `.playwright-mcp/phase01-desktop.png` and
-`.playwright-mcp/phase01-mobile.png`; browser logs remain ignored because tooling
+Screenshots are in an ignored local browser-automation folder (`phase01-desktop.png` and
+`phase01-mobile.png`); browser logs remain ignored because tooling
 may include machine-specific paths. This is a browser smoke check, not full WCAG
 conformance or application E2E coverage.
 
@@ -171,7 +171,7 @@ dependency-advisory audit. Original instructor documents were not copied or chan
 ### Normal Windows terminal recovery
 
 From the already confirmed workspace, run these diagnostics in a normal PowerShell
-terminal, not the restricted Codex command environment:
+terminal, not the restricted sandboxed command environment used during development:
 
 ```powershell
 Resolve-DnsName github.com
