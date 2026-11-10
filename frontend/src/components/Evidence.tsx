@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 import type { ScanView } from "../lib/contracts";
 import { bytes, reasonText, short } from "../lib/errors";
 import { Hash, Status } from "./ui";
+import { CoverageBar } from "./CoverageBar";
+import { coverageShare, matchedBlockCount } from "./Verdict";
 import { useSession } from "../lib/session";
 
 export function Evidence({ scan }: { scan: ScanView }) {
@@ -30,9 +32,9 @@ export function Evidence({ scan }: { scan: ScanView }) {
           <strong>r{scan.detection.registry_revision}</strong>
         </div>
         <div>
-          <span>Policy version</span>
+          <span>Policy record</span>
           <Link to="/policies" title={scan.policy_id}>
-            {short(scan.policy_id)}
+            <code>{short(scan.policy_id)}</code>
           </Link>
         </div>
       </div>
@@ -53,7 +55,8 @@ export function Evidence({ scan }: { scan: ScanView }) {
           <summary>
             <span>
               {match.exact ? "Exact file match" : "Block match"} ·{" "}
-              {bytes(match.matched_bytes)}
+              {bytes(match.matched_bytes)} · {matchedBlockCount(match)}{" "}
+              {matchedBlockCount(match) === 1 ? "block" : "blocks"}
             </span>
             <strong>
               {match.coverage.denominator
@@ -75,13 +78,7 @@ export function Evidence({ scan }: { scan: ScanView }) {
             )}{" "}
             · version <code>{short(match.version_id)}</code>
           </p>
-          <div className="coverage-track" aria-hidden="true">
-            <span
-              style={{
-                width: `${match.coverage.denominator ? Math.min(100, (match.coverage.numerator / match.coverage.denominator) * 100) : 0}%`,
-              }}
-            />
-          </div>
+          <CoverageBar share={coverageShare(match)} />
           <p className="tiny muted">
             Counted outbound byte intervals:{" "}
             {match.intervals

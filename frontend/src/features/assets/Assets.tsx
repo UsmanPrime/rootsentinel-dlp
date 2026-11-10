@@ -18,6 +18,11 @@ import {
 import { useAction, useGet, useTitle } from "../../lib/hooks";
 import { bytes, date, short } from "../../lib/errors";
 import { useSession } from "../../lib/session";
+import { useEnvironment } from "../../lib/environment";
+import { useToast } from "../../lib/toast";
+
+/** The server's display-label rule (schemas.Label), checked before sending so the form can explain it. */
+const ASSET_LABEL = /^[A-Za-z0-9][A-Za-z0-9 ._()-]{0,119}$/;
 import type {
   AssetPage,
   AssetView,
@@ -39,15 +44,21 @@ export function Registration({
   const [source, setSource] = useState("protected");
   const [file, setFile] = useState<File>();
   const [invalid, setInvalid] = useState("");
+  const [labelError, setLabelError] = useState("");
+  const cap = useEnvironment().maxUploadBytes;
+  const toast = useToast();
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const label = String(new FormData(e.currentTarget).get("label") ?? "");
+    if (!asset && !ASSET_LABEL.test(label)) {
+      setLabelError(
+        "Start with a letter or digit, then use letters, digits, spaces and . _ ( ) - only (up to 120 characters).",
+      );
+      return;
+    }
     const body = source === "local" ? file : fixture(source);
-    if (
-      !body ||
-      (body instanceof File && (!body.size || body.size > 10485760))
-    ) {
-      setInvalid("Choose a nonempty synthetic file up to 10 MiB.");
+    if (!body || (body instanceof File && (!body.size || body.size > cap))) {
+      setInvalid(`Choose a nonempty synthetic file up to ${bytes(cap)}.`);
       return;
     }
     const path = asset
@@ -66,7 +77,12 @@ export function Registration({
         ),
       )
       .then((v) => {
-        if (v) done(v);
+        if (v) {
+          toast(
+            asset ? `Version ${v.number} registered` : `Registered ${label}`,
+          );
+          done(v);
+        }
       });
   }
   return (
@@ -89,8 +105,16 @@ export function Registration({
               required
               maxLength={120}
               placeholder="e.g. Synthetic payment service"
+              aria-invalid={labelError ? true : undefined}
+              aria-describedby={labelError ? "asset-label-error" : undefined}
+              onChange={() => setLabelError("")}
             />
           </label>
+        )}
+        {!asset && labelError && (
+          <p id="asset-label-error" className="field-error">
+            {labelError}
+          </p>
         )}
         <label>
           Registration input
@@ -273,6 +297,7 @@ function AssetDetail({ id }: { id: string }) {
   const [offset, setOffset] = useState(0);
   const [register, setRegister] = useState(false);
   const [retiring, setRetiring] = useState(false);
+  const toast = useToast();
   const asset = useGet<AssetView>(`/assets/${id}`);
   const versions = useGet<VersionSummary[]>(
     `/assets/${id}/versions?limit=5&offset=${offset}`,
@@ -426,6 +451,7 @@ function AssetDetail({ id }: { id: string }) {
                   if (v) {
                     setRetiring(false);
                     refresh();
+                    toast("Asset retired. Its versions stay in the history.");
                   }
                 })
             }

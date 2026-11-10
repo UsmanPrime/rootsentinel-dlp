@@ -44,6 +44,8 @@ export function TreeDiagram({
   tree: TreeView;
   select: (n: number) => void;
 }) {
+  // A leaf being hovered or focused: its path to the root and the proof siblings along it are highlighted.
+  const [preview, setPreview] = useState<string | null>(null);
   if (!tree.nodes.length)
     return (
       <Empty title="Empty tree">
@@ -61,6 +63,20 @@ export function TreeDiagram({
     return x;
   }
   place(tree.nodes[tree.nodes.length - 1], 0);
+  const parent = new Map<string, string>();
+  for (const n of tree.nodes)
+    for (const child of [n.left, n.right]) if (child) parent.set(child, n.id);
+  const previewPath = new Set<string>();
+  const previewSiblings = new Set<string>();
+  for (let id = preview; id; id = parent.get(id) ?? null) {
+    previewPath.add(id);
+    const up = parent.get(id);
+    const node = up ? byId.get(up) : undefined;
+    const other = node && (node.left === id ? node.right : node.left);
+    if (other) previewSiblings.add(other);
+  }
+  const previewLeaf = preview ? byId.get(preview) : undefined;
+  const hover = (id: string | null) => () => setPreview(id);
   const width = Math.max(600, next * 110),
     height =
       80 + Math.max(...Array.from(positions.values()).map((p) => p.y)) * 90;
@@ -77,7 +93,7 @@ export function TreeDiagram({
     >
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        style={{ minWidth: Math.min(width, 900) }}
+        className={`tree-min-${Math.min(9, Math.max(6, Math.round(width / 100)))}`}
         role="img"
         aria-label={`${tree.manifest.chunk_count}-leaf Merkle tree, selected chunk ${tree.selected_index}. ${tree.mode === "proof_path" ? "Collapsed proof path." : "Full ordered tree."}`}
       >
@@ -91,11 +107,7 @@ export function TreeDiagram({
                 <path
                   key={`${n.id}-${child}`}
                   d={`M${a.x},${a.y + 22} V${a.y + 45} H${b.x} V${b.y - 22}`}
-                  className={
-                    byId.get(child)?.selected_path
-                      ? "tree-edge selected"
-                      : "tree-edge"
-                  }
+                  className={`tree-edge ${byId.get(child)?.selected_path ? "selected" : ""} ${previewPath.has(child) ? "previewed" : ""}`}
                 />
               );
             }),
@@ -106,7 +118,9 @@ export function TreeDiagram({
             <g
               key={n.id}
               transform={`translate(${p.x},${p.y})`}
-              className={`tree-node ${n.selected_path ? "selected" : n.sibling ? "sibling" : ""}`}
+              className={`tree-node ${n.selected_path ? "selected" : n.sibling ? "sibling" : ""} ${previewPath.has(n.id) ? "previewed" : previewSiblings.has(n.id) ? "preview-sibling" : ""}`}
+              onMouseEnter={n.count === 1 ? hover(n.id) : undefined}
+              onMouseLeave={n.count === 1 ? hover(null) : undefined}
             >
               <rect x={-48} y={-23} width={96} height={48} rx={6} />
               <text y={-4} textAnchor="middle">
@@ -122,8 +136,14 @@ export function TreeDiagram({
         })}
       </svg>
       <p className="help-text">
-        Teal: selected leaf to root. Amber: proof sibling subtree. Ordered chunk
-        selection is available below.
+        Teal: selected leaf to root. Amber: proof sibling subtree. Hover a leaf,
+        or focus a chunk button, to preview its path. Ordered chunk selection is
+        available below.
+      </p>
+      <p className="tree-preview" aria-live="polite">
+        {previewLeaf
+          ? `Previewing chunk ${previewLeaf.start}: ${previewPath.size} nodes to the root, ${previewSiblings.size} sibling ${previewSiblings.size === 1 ? "hash" : "hashes"} in its proof.`
+          : ""}
       </p>
       <div className="leaf-shortcuts" aria-label="Leaf shortcuts">
         {tree.nodes
@@ -134,6 +154,10 @@ export function TreeDiagram({
               className="button secondary small"
               aria-pressed={n.start === tree.selected_index}
               onClick={() => select(n.start)}
+              onFocus={hover(n.id)}
+              onBlur={hover(null)}
+              onMouseEnter={hover(n.id)}
+              onMouseLeave={hover(null)}
             >
               Chunk {n.start}
             </button>
@@ -265,6 +289,7 @@ export default function Integrity() {
             offset={assetOffset}
             count={assets.data.items.length}
             change={setAssetOffset}
+            label="Asset list pages"
           />
         )}
         {asset && versions.data && versions.data.length >= 5 && (
@@ -441,6 +466,7 @@ export default function Integrity() {
               offset={offset}
               count={tree.data.chunks.length}
               change={setOffset}
+              label="Chunk pages"
             />
             <details>
               <summary>Tree nodes as a table</summary>
@@ -476,48 +502,51 @@ export default function Integrity() {
           </Panel>
         </>
       )}
-      <Panel
-        title="The empty-file boundary"
-        subtitle="Empty files can be fingerprinted, but cannot be registered as protected IP."
-      >
-        <button
-          className="button secondary"
-          disabled={action.busy}
-          onClick={() =>
-            void action
-              .run(() =>
-                api<ScanView>(
-                  "/scans?filename=empty-demo.bin",
-                  {
-                    method: "POST",
-                    headers: { "Content-Type": "application/octet-stream" },
-                    body: new Uint8Array(),
-                  },
-                  auth!.csrf_token,
-                ),
-              )
-              .then((result) => {
-                if (result) setEmpty(result);
-              })
-          }
+      {/* Rendered once the tree has settled, so the arriving tree never pushes this panel down (layout shift). */}
+      {!tree.loading && (
+        <Panel
+          title="The empty-file boundary"
+          subtitle="Empty files can be fingerprinted, but cannot be registered as protected IP."
         >
-          <GitBranch size={16} />
-          Fingerprint empty input
-        </button>
-        {empty && (
-          <>
-            <Status value={empty.decision.outcome} />
-            <Hash
-              value={empty.detection.manifest.merkle_root}
-              label="Empty Merkle root from backend"
-            />
-            <p>
-              No leaves; no inclusion proof exists. The root is SHA-256 of the
-              empty string.
-            </p>
-          </>
-        )}
-      </Panel>
+          <button
+            className="button secondary"
+            disabled={action.busy}
+            onClick={() =>
+              void action
+                .run(() =>
+                  api<ScanView>(
+                    "/scans?filename=empty-demo.bin",
+                    {
+                      method: "POST",
+                      headers: { "Content-Type": "application/octet-stream" },
+                      body: new Uint8Array(),
+                    },
+                    auth!.csrf_token,
+                  ),
+                )
+                .then((result) => {
+                  if (result) setEmpty(result);
+                })
+            }
+          >
+            <GitBranch size={16} />
+            Fingerprint empty input
+          </button>
+          {empty && (
+            <>
+              <Status value={empty.decision.outcome} />
+              <Hash
+                value={empty.detection.manifest.merkle_root}
+                label="Empty Merkle root from backend"
+              />
+              <p>
+                No leaves; no inclusion proof exists. The root is SHA-256 of the
+                empty string.
+              </p>
+            </>
+          )}
+        </Panel>
+      )}
     </>
   );
 }

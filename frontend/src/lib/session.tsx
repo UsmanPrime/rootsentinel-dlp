@@ -35,9 +35,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const controller = new AbortController();
     setChecking(true);
-    api<AuthView>("/auth/me", { signal: controller.signal })
+    // /auth/session answers 204 (not 401) without a session, so a signed-out page load logs no failed request.
+    api<AuthView | undefined>("/auth/session", { signal: controller.signal })
       .then((value) => {
-        if (!controller.signal.aborted) update(value);
+        if (!controller.signal.aborted) update(value ?? null);
       })
       .catch((error) => {
         if (!controller.signal.aborted) {

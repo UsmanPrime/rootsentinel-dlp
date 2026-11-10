@@ -11,14 +11,18 @@ import {
   PageHeader,
   Pager,
   Panel,
+  SortHeader,
   Status,
   Table,
+  nextSort,
+  type SortDirection,
 } from "../../components/ui";
+import { useToast } from "../../lib/toast";
 import { useAction, useGet, useTitle } from "../../lib/hooks";
 import { date, short } from "../../lib/errors";
 import { useSession } from "../../lib/session";
 import type { IncidentView } from "../../lib/contracts";
-import { saveBlob } from "../transfers/Gateway";
+import { saveBlob } from "../../lib/files";
 
 type Summary = Pick<
   IncidentView,
@@ -34,9 +38,19 @@ function Listing() {
   const [offset, setOffset] = useState(0);
   const [severity, setSeverity] = useState("");
   const [order, setOrder] = useState("newest");
+  const [sort, setSort] = useState<{
+    column: string;
+    direction: SortDirection;
+  }>({
+    column: "created_at",
+    direction: "descending",
+  });
+
   const result = useGet<{ items: Summary[] }>(
     `/incidents?limit=10&offset=${offset}&order=${order}${status ? `&status=${status}` : ""}${severity ? `&severity=${severity}` : ""}`,
   );
+  const rows = sortIncidents(result.data?.items ?? [], sort);
+  const filtered = Boolean(status || severity);
   return (
     <>
       <PageHeader
@@ -96,21 +110,40 @@ function Listing() {
           </button>
         </div>
         <Failure error={result.error} retry={result.refresh} />
-        {result.loading && <Loading />}
+        {result.loading && <Loading rows={5} />}
         {result.data &&
           (result.data.items.length ? (
             <Table label="Incident queue">
+              <caption className="sr-only">
+                Incident queue. Column sorting applies to the incidents on this
+                page.
+              </caption>
               <thead>
                 <tr>
-                  <th>Incident</th>
-                  <th>Severity</th>
-                  <th>Status</th>
-                  <th>Observed</th>
-                  <th>Transfer</th>
+                  <th scope="col">Incident</th>
+                  <SortHeader
+                    label="Severity"
+                    column="severity"
+                    sort={sort}
+                    change={(c) => setSort(nextSort(sort, c))}
+                  />
+                  <SortHeader
+                    label="Status"
+                    column="status"
+                    sort={sort}
+                    change={(c) => setSort(nextSort(sort, c))}
+                  />
+                  <SortHeader
+                    label="Observed"
+                    column="created_at"
+                    sort={sort}
+                    change={(c) => setSort(nextSort(sort, c))}
+                  />
+                  <th scope="col">Transfer</th>
                 </tr>
               </thead>
               <tbody>
-                {result.data.items.map((i) => (
+                {rows.map((i) => (
                   <tr key={i.id}>
                     <td>
                       <Link className="row-link mono" to={`/incidents/${i.id}`}>
@@ -134,9 +167,30 @@ function Listing() {
               </tbody>
             </Table>
           ) : (
-            <Empty title="No incidents in this view">
-              Submit a protected synthetic transfer to create a real
-              policy-blocked incident.
+            <Empty
+              title="No incidents in this view"
+              action={
+                filtered ? (
+                  <button
+                    className="button secondary"
+                    onClick={() => {
+                      setStatus("");
+                      setSeverity("");
+                      setOffset(0);
+                    }}
+                  >
+                    Clear filters
+                  </button>
+                ) : (
+                  <Link className="button secondary" to="/transfers">
+                    Open the transfer gateway
+                  </Link>
+                )
+              }
+            >
+              {filtered
+                ? "No incident matches these filters. Clear them to see the whole queue."
+                : "Submit a protected synthetic transfer to create a real policy-blocked incident."}
             </Empty>
           ))}
         {result.data && (
@@ -154,14 +208,51 @@ function Listing() {
     </>
   );
 }
+const SEVERITY_RANK: Record<string, number> = { HIGH: 2, MEDIUM: 1 };
+const STATUS_RANK: Record<string, number> = {
+  OPEN: 0,
+  INVESTIGATING: 1,
+  RESOLVED: 2,
+};
+/** Sorts the incidents already on this page; the server's own filters and order decide which ones those are. */
+export function sortIncidents(
+  items: Summary[],
+  sort: { column: string; direction: SortDirection },
+): Summary[] {
+  const key = (i: Summary): number | string =>
+    sort.column === "severity"
+      ? (SEVERITY_RANK[i.severity] ?? 0)
+      : sort.column === "status"
+        ? (STATUS_RANK[i.status] ?? 0)
+        : i.created_at;
+  const sign = sort.direction === "ascending" ? 1 : -1;
+  return [...items].sort((a, b) => {
+    const x = key(a),
+      y = key(b);
+    return (x < y ? -1 : x > y ? 1 : a.id < b.id ? -1 : 1) * sign;
+  });
+}
+
 function Detail({ id }: { id: string }) {
   const { auth } = useSession();
   const result = useGet<IncidentView>(`/incidents/${id}`);
   const action = useAction();
+  const toast = useToast();
   const [edit, setEdit] = useState(false);
+  const [resolutionError, setResolutionError] = useState("");
   function update(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fields = new FormData(e.currentTarget);
+    if (
+      fields.get("status") === "RESOLVED" &&
+      !String(fields.get("resolution") ?? "").trim()
+    ) {
+      setResolutionError(
+        "Enter a resolution reason before closing this incident.",
+      );
+      return;
+    }
+    setResolutionError("");
     void action
       .run(() =>
         api<IncidentView>(
@@ -182,6 +273,7 @@ function Detail({ id }: { id: string }) {
         if (v) {
           setEdit(false);
           result.refresh();
+          toast(`Investigation saved as ${v.status.toLowerCase()}`);
         }
       });
   }
@@ -209,6 +301,7 @@ function Detail({ id }: { id: string }) {
                       }),
                       `incident-${id}.json`,
                     );
+                    toast("Evidence exported as JSON");
                   })
                 }
               >
@@ -315,8 +408,18 @@ function Detail({ id }: { id: string }) {
                   maxLength={500}
                   rows={2}
                   placeholder="Required when resolving an incident"
+                  aria-invalid={resolutionError ? true : undefined}
+                  aria-describedby={
+                    resolutionError ? "resolution-error" : undefined
+                  }
+                  onChange={() => setResolutionError("")}
                 />
               </label>
+              {resolutionError && (
+                <p id="resolution-error" className="field-error">
+                  {resolutionError}
+                </p>
+              )}
               <Failure error={action.error} />
               <p className="help-text">
                 The transfer verdict remains BLOCK. Conflicting updates are

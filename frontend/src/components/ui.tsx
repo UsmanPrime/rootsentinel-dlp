@@ -1,8 +1,11 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
   AlertCircle,
+  ArrowDown,
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
+  ArrowUpDown,
   Check,
   Copy,
   ShieldCheck,
@@ -10,6 +13,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { errorMessage } from "../lib/errors";
+import { useToast } from "../lib/toast";
 
 export function PageHeader({
   eyebrow,
@@ -114,16 +118,35 @@ export function Failure({
     </Notice>
   );
 }
-export function Loading({ label = "Loading records" }: { label?: string }) {
+export function Loading({
+  label = "Loading records",
+  rows = 0,
+}: {
+  label?: string;
+  /** Show this many table-row placeholders instead of text lines, so lists do not jump when data arrives. */
+  rows?: number;
+}) {
   return (
     <div className="loading" role="status" aria-live="polite">
       <span className="loader" aria-hidden="true" />
       {label}
-      <div className="skeleton-lines" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-      </div>
+      {rows ? (
+        <div className="skeleton-table" aria-hidden="true">
+          {Array.from({ length: rows }, (_, i) => (
+            <span key={i}>
+              <i />
+              <i />
+              <i />
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="skeleton-lines" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+        </div>
+      )}
     </div>
   );
 }
@@ -131,17 +154,21 @@ export function Empty({
   title,
   children,
   action,
+  level = 3,
 }: {
   title: string;
   children: ReactNode;
   action?: ReactNode;
+  /** Heading level; 1 when the empty state is the whole page (for example an access refusal). */
+  level?: 1 | 2 | 3;
 }) {
+  const Heading = ("h" + level) as "h1" | "h2" | "h3";
   return (
     <div className="empty">
       <div className="empty-mark" aria-hidden="true">
         <ShieldCheck size={24} />
       </div>
-      <h3>{title}</h3>
+      <Heading className="empty-title">{title}</Heading>
       <p>{children}</p>
       {action}
     </div>
@@ -156,6 +183,7 @@ export function Hash({
 }) {
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
+  const toast = useToast();
   return (
     <div className="hash-field">
       <span className="field-caption">{label}</span>
@@ -169,6 +197,7 @@ export function Hash({
               await navigator.clipboard.writeText(value);
               setCopied(true);
               setFailed(false);
+              toast(` copied to the clipboard`, "info");
             } catch {
               setFailed(true);
             }
@@ -195,14 +224,17 @@ export function Pager({
   count,
   size = 10,
   change,
+  label = "Pagination",
 }: {
   offset: number;
   count: number;
   size?: number;
   change: (n: number) => void;
+  /** Distinct names when a page has more than one pager, so each navigation landmark is unique. */
+  label?: string;
 }) {
   return (
-    <nav className="pager" aria-label="Pagination">
+    <nav className="pager" aria-label={label}>
       <span>
         {count
           ? `Showing ${offset + 1}–${offset + count}`
@@ -312,4 +344,44 @@ export function Table({
       <table>{children}</table>
     </div>
   );
+}
+
+export type SortDirection = "ascending" | "descending";
+/** A column header that sorts the rows on this page; aria-sort tells assistive technology the current order. */
+export function SortHeader({
+  label,
+  column,
+  sort,
+  change,
+}: {
+  label: string;
+  column: string;
+  sort: { column: string; direction: SortDirection };
+  change: (column: string) => void;
+}) {
+  const active = sort.column === column;
+  const Icon = !active
+    ? ArrowUpDown
+    : sort.direction === "ascending"
+      ? ArrowUp
+      : ArrowDown;
+  return (
+    <th scope="col" aria-sort={active ? sort.direction : "none"}>
+      <button className="sort-button" onClick={() => change(column)}>
+        {label}
+        <Icon size={13} aria-hidden="true" />
+      </button>
+    </th>
+  );
+}
+
+export function nextSort(
+  current: { column: string; direction: SortDirection },
+  column: string,
+): { column: string; direction: SortDirection } {
+  if (current.column !== column) return { column, direction: "ascending" };
+  return {
+    column,
+    direction: current.direction === "ascending" ? "descending" : "ascending",
+  };
 }

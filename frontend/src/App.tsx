@@ -24,6 +24,7 @@ import {
   BookOpen,
   Boxes,
   ChevronRight,
+  CircleHelp,
   Fingerprint,
   GitBranch,
   LayoutDashboard,
@@ -37,6 +38,13 @@ import { api, jsonBody } from "./api";
 import { Dialog, Empty, Failure, Loading, Notice } from "./components/ui";
 import { useAction, useTitle } from "./lib/hooks";
 import { SessionProvider, useSession } from "./lib/session";
+import {
+  EnvironmentProvider,
+  environmentLabel,
+  useEnvironment,
+} from "./lib/environment";
+import { ToastProvider } from "./lib/toast";
+import { Tour, TourInvite, markTourSeen, tourSeen } from "./components/Tour";
 import type { AuthView } from "./lib/contracts";
 
 const Overview = lazy(() => import("./features/overview/Overview"));
@@ -81,12 +89,12 @@ const navigation = [
 
 function Brand() {
   return (
-    <Link to="/" className="brand" aria-label="RootSentinel overview">
+    <Link to="/" className="brand">
       <span className="brand-emblem">
         <Fingerprint size={27} strokeWidth={1.6} />
       </span>
       <span>
-        RootSentinel<small>DATA LOSS PREVENTION</small>
+        RootSentinel<small> Data loss prevention</small>
       </span>
     </Link>
   );
@@ -98,6 +106,7 @@ function Login() {
   const action = useAction();
   const navigate = useNavigate();
   const location = useLocation();
+  const environment = useEnvironment();
   if (session.auth) return <Navigate to="/" replace />;
   function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -165,7 +174,13 @@ function Login() {
       </section>
       <section className="login-access" aria-labelledby="login-title">
         <div className="login-card">
-          <span className="eyebrow">LOCAL SECURITY WORKSPACE</span>
+          <span className="eyebrow">
+            {environment.hosted === true
+              ? "HOSTED DEMO WORKSPACE"
+              : environment.hosted === false
+                ? "LOCAL SECURITY WORKSPACE"
+                : "SECURITY WORKSPACE"}
+          </span>
           <h2 id="login-title">Welcome back</h2>
           <p className="muted">
             Sign in with your administrator-provisioned account.
@@ -258,6 +273,7 @@ function Protected({
   if (privileged && auth.user.role === "EMPLOYEE")
     return (
       <Empty
+        level={1}
         title="Access restricted"
         action={
           <Link className="button secondary" to="/">
@@ -277,6 +293,11 @@ function Shell() {
   const action = useAction();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+  const [invite, setInvite] = useState(() => !tourSeen());
+  const environment = useEnvironment();
+  const label = environmentLabel(environment.hosted);
+  const privileged = auth!.user.role !== "EMPLOYEE";
   const main = useRef<HTMLElement>(null);
   const active = navigation.find((x) =>
     x.path === "/"
@@ -318,7 +339,7 @@ function Shell() {
         <div className="sidebar-foot">
           <span className="local-mark" />
           <strong>Controlled gateway</strong>
-          <p>Local mode · Single workspace</p>
+          <p>{label.detail}</p>
           <Link to="/guide#limitations">
             Understand the boundary <ArrowRight size={12} />
           </Link>
@@ -340,7 +361,23 @@ function Shell() {
             <strong>{active?.name ?? "Record"}</strong>
           </div>
           <div className="account">
-            <span className="environment">LOCAL</span>
+            <span
+              className={`environment ${environment.hosted ? "hosted" : ""}`}
+              title={
+                environment.hosted === null
+                  ? "Deployment type not reported yet"
+                  : "Reported by the server"
+              }
+            >
+              {label.badge}
+            </span>
+            <button
+              className="icon-button"
+              aria-label="Take the product tour"
+              onClick={() => setTourOpen(true)}
+            >
+              <CircleHelp size={18} />
+            </button>
             <div className="account-label">
               <strong>{auth!.user.username}</strong>
               <span>{auth!.user.role}</span>
@@ -371,13 +408,30 @@ function Shell() {
           className="page-content"
         >
           <Failure error={action.error} />
+          {invite && location.pathname === "/" && (
+            <TourInvite
+              start={() => {
+                setInvite(false);
+                setTourOpen(true);
+              }}
+              dismiss={() => {
+                markTourSeen();
+                setInvite(false);
+              }}
+            />
+          )}
           <Suspense fallback={<Loading label="Opening workspace" />}>
             <Outlet />
           </Suspense>
         </main>
         <footer className="app-footer">
           <span>RootSentinel / Evidence-driven transfer control</span>
-          <span>Gateway scope only · Use synthetic files only; never upload confidential data</span>
+          <span>
+            Gateway scope only · Use synthetic files only; never upload
+            confidential data
+            {environment.commit !== "unknown" &&
+              ` · Build ${environment.commit.slice(0, 7)}`}
+          </span>
         </footer>
       </div>
       <Dialog
@@ -387,6 +441,14 @@ function Shell() {
       >
         <div className="mobile-links">{links}</div>
       </Dialog>
+      <Tour
+        open={tourOpen}
+        close={() => {
+          setTourOpen(false);
+          setInvite(false);
+        }}
+        privileged={privileged}
+      />
     </div>
   );
 }
@@ -394,70 +456,74 @@ function Shell() {
 export default function App() {
   return (
     <BrowserRouter>
-      <SessionProvider>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route
-            element={
-              <Protected>
-                <Shell />
-              </Protected>
-            }
-          >
-            <Route index element={<Overview />} />
-            <Route path="transfers/:id?" element={<Gateway />} />
-            <Route
-              path="assets/:id?"
-              element={
-                <Protected privileged>
-                  <Assets />
-                </Protected>
-              }
-            />
-            <Route
-              path="integrity"
-              element={
-                <Protected privileged>
-                  <Integrity />
-                </Protected>
-              }
-            />
-            <Route
-              path="incidents/:id?"
-              element={
-                <Protected privileged>
-                  <Incidents />
-                </Protected>
-              }
-            />
-            <Route
-              path="audit"
-              element={
-                <Protected privileged>
-                  <Audit />
-                </Protected>
-              }
-            />
-            <Route path="policies" element={<Policies />} />
-            <Route path="guide" element={<Guide />} />
-            <Route
-              path="*"
-              element={
-                <Empty
-                  title="Page not found"
-                  action={
-                    <Link className="button primary" to="/">
-                      Open overview
-                    </Link>
+      <EnvironmentProvider>
+        <ToastProvider>
+          <SessionProvider>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route
+                element={
+                  <Protected>
+                    <Shell />
+                  </Protected>
+                }
+              >
+                <Route index element={<Overview />} />
+                <Route path="transfers/:id?" element={<Gateway />} />
+                <Route
+                  path="assets/:id?"
+                  element={
+                    <Protected privileged>
+                      <Assets />
+                    </Protected>
                   }
-                >
-                  Use workspace navigation to find a record.
-                </Empty>
-              }
-            />
-          </Route>
-        </Routes>
-      </SessionProvider>
+                />
+                <Route
+                  path="integrity"
+                  element={
+                    <Protected privileged>
+                      <Integrity />
+                    </Protected>
+                  }
+                />
+                <Route
+                  path="incidents/:id?"
+                  element={
+                    <Protected privileged>
+                      <Incidents />
+                    </Protected>
+                  }
+                />
+                <Route
+                  path="audit"
+                  element={
+                    <Protected privileged>
+                      <Audit />
+                    </Protected>
+                  }
+                />
+                <Route path="policies" element={<Policies />} />
+                <Route path="guide" element={<Guide />} />
+                <Route
+                  path="*"
+                  element={
+                    <Empty
+                      title="Page not found"
+                      action={
+                        <Link className="button primary" to="/">
+                          Open overview
+                        </Link>
+                      }
+                    >
+                      Use workspace navigation to find a record.
+                    </Empty>
+                  }
+                />
+              </Route>
+            </Routes>
+          </SessionProvider>
+        </ToastProvider>
+      </EnvironmentProvider>
     </BrowserRouter>
   );
 }

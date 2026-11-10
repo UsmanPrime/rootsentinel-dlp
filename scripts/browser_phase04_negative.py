@@ -15,7 +15,10 @@ def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(channel=os.environ.get("ROOTSENTINEL_BROWSER_CHANNEL", "chrome") or None, headless=True)
         context = browser.new_context(viewport={"width": 375, "height": 900})
+        context.add_init_script("document.addEventListener('securitypolicyviolation', e => console.error('CSP violation: ' + e.violatedDirective))")
         page = context.new_page()
+        csp_violations = []
+        page.on("console", lambda m: csp_violations.append(m.text[:200]) if m.type == "error" and ("CSP violation" in m.text or "Content Security Policy" in m.text) else None)
         def login():
             page.goto(origin + "/login"); page.get_by_label("Username", exact=True).fill("browser-admin"); page.get_by_label("Password", exact=True).fill(credentials["password"]); page.get_by_role("button", name="Sign in", exact=True).click(); expect(page.get_by_role("heading", name="Security overview", exact=True)).to_be_visible(); page.wait_for_load_state("networkidle")
         def csrf(): return context.request.get(origin + "/api/v1/auth/me").json()["csrf_token"]
@@ -39,10 +42,12 @@ def main():
         inject(state, "expire-session"); page.get_by_role("button", name="Refresh state").click(); expect(page.get_by_role("button", name="Sign in", exact=True)).to_be_visible(); expect(page.get_by_text("Your session ended.", exact=False)).to_be_visible(); checks.append("real session expiry clears private workspace")
         login(); approved = submit(); inject(state, "audit-mac")
         page.goto(origin + "/audit"); page.get_by_role("button", name="Verify audit integrity", exact=True).click(); expect(page.get_by_text("FAILED", exact=True)).to_be_visible(); checks.append("tampered audit chain displays actual verification failure")
-        page.goto(origin + f"/transfers/{approved['id']}"); page.get_by_role("button", name="Verified download", exact=True).click(); expect(page.get_by_role("alert")).to_be_visible(); assert "unprotected-negative-test-content" not in page.locator("main").inner_text(); checks.append("mandatory audit failure prevents release and safe UI error")
+        page.goto(origin + f"/transfers/{approved['id']}"); page.get_by_role("button", name="Verified download", exact=True).click(); page.get_by_role("button", name="Download once", exact=True).click(); expect(page.get_by_role("alert")).to_be_visible(); assert "unprotected-negative-test-content" not in page.locator("main").inner_text(); checks.append("mandatory audit failure prevents release and safe UI error")
         assert not page.evaluate("Object.keys(localStorage).length")
-        report = {"verdict": "PASS", "checks": checks, "transport": "Real loopback API; controlled faults only in ephemeral synthetic browser database"}
-        (Path(__file__).resolve().parents[1] / "docs/evidence/phase-04-negative-browser.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        assert not csp_violations, csp_violations; checks.append("zero CSP violations on the failure paths")
+        report = {"verdict": "PASS", "checks": checks, "csp_violations": 0, "transport": "Real loopback API; controlled faults only in ephemeral synthetic browser database"}
+        out = Path(os.environ.get("ROOTSENTINEL_BROWSER_EVIDENCE") or state / "evidence"); out.mkdir(parents=True, exist_ok=True)
+        (out / "negative-browser-report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         print(json.dumps(report, indent=2)); browser.close()
 
 

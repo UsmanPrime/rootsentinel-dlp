@@ -1,0 +1,2 @@
+# Generated from docs/openapi.json by scripts/frontend_contracts.py; CI checks it byte for byte.
+src/lib/contracts.ts

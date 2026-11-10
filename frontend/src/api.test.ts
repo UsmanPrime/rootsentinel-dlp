@@ -24,16 +24,14 @@ describe("HTTP boundary", () => {
     async (status) => {
       vi.stubGlobal(
         "fetch",
-        vi
-          .fn()
-          .mockResolvedValue(
-            new Response(
-              JSON.stringify({
-                error: { code: "<script>private payload</script>" },
-              }),
-              { status },
-            ),
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              error: { code: "<script>private payload</script>" },
+            }),
+            { status },
           ),
+        ),
       );
       try {
         await api("/scans");

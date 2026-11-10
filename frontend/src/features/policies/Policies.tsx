@@ -14,6 +14,7 @@ import {
 import { useAction, useGet, useTitle } from "../../lib/hooks";
 import { date, short } from "../../lib/errors";
 import { useSession } from "../../lib/session";
+import { useToast } from "../../lib/toast";
 import type { PolicyPage, PolicyView } from "../../lib/contracts";
 
 export default function Policies() {
@@ -22,6 +23,8 @@ export default function Policies() {
   const action = useAction();
   const [offset, setOffset] = useState(0);
   const [edit, setEdit] = useState(false);
+  const [thresholdError, setThresholdError] = useState("");
+  const toast = useToast();
   const [saved, setSaved] = useState<number>();
   const active = useGet<PolicyView>("/policies/active");
   const history = useGet<PolicyPage>(
@@ -32,6 +35,12 @@ export default function Policies() {
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const values = new FormData(e.currentTarget);
+    const threshold = Number(values.get("threshold"));
+    if (!Number.isInteger(threshold) || threshold < 1 || threshold > 10485760) {
+      setThresholdError("Enter a whole number of bytes from 1 to 10,485,760.");
+      return;
+    }
+    setThresholdError("");
     void action
       .run(() =>
         api<PolicyView>(
@@ -39,7 +48,7 @@ export default function Policies() {
           jsonBody({
             expected_version: active.data!.id,
             block_enabled: values.get("enabled") === "on",
-            threshold: Number(values.get("threshold")),
+            threshold,
           }),
           auth!.csrf_token,
         ),
@@ -47,6 +56,7 @@ export default function Policies() {
       .then((v) => {
         if (v) {
           setSaved(v.number);
+          toast(`Policy version ${v.number} is active`);
           setEdit(false);
           active.refresh();
           history.refresh();
@@ -200,8 +210,18 @@ export default function Policies() {
                   step={1}
                   defaultValue={active.data.threshold}
                   required
+                  aria-invalid={thresholdError ? true : undefined}
+                  aria-describedby={
+                    thresholdError ? "threshold-error" : undefined
+                  }
+                  onChange={() => setThresholdError("")}
                 />
               </label>
+              {thresholdError && (
+                <p id="threshold-error" className="field-error">
+                  {thresholdError}
+                </p>
+              )}
               <p className="help-text">
                 Exact protected-file matches always BLOCK. Turning off block
                 matching reduces partial-copy detection enforcement.

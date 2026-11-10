@@ -48,7 +48,9 @@ export default function Overview() {
         },
       ]
     : [];
-  const maximum = Math.max(2, ...(data?.daily.map((x) => x.total) ?? []));
+  // An even scale maximum keeps the middle axis label exact (half of it), not a rounded guess.
+  const peak = Math.max(0, ...(data?.daily.map((x) => x.total) ?? []));
+  const maximum = Math.max(2, Math.ceil(peak / 2) * 2);
   function refresh() {
     overview.refresh();
     recent.refresh();
@@ -152,29 +154,56 @@ export default function Overview() {
               >
                 <div className="chart-scale">
                   <span>{maximum}</span>
-                  <span>{Math.round(maximum / 2)}</span>
+                  <span>{maximum / 2}</span>
                   <span>0</span>
                 </div>
                 <div className="chart-bars">
-                  {data.daily.map((day) => (
-                    <div className="chart-column" key={day.date}>
-                      <span className="bar-value">{day.total}</span>
-                      <div className="bar-track">
-                        <i
-                          style={{
-                            height: `${(day.total / maximum) * 100}%`,
-                            borderTopWidth: day.total ? 2 : 0,
-                          }}
-                        />
+                  {data.daily.map((day) => {
+                    const height = (day.total / maximum) * 100;
+                    const label = new Date(
+                      day.date + "T00:00:00Z",
+                    ).toLocaleDateString("en", {
+                      month: "short",
+                      day: "numeric",
+                      timeZone: "UTC",
+                    });
+                    const tip = `${label}: ${day.total} transfer ${day.total === 1 ? "attempt" : "attempts"}`;
+                    return (
+                      <div className="chart-column" key={day.date}>
+                        <span className="bar-value">{day.total}</span>
+                        <div className="bar-track">
+                          <svg
+                            className="bar-svg"
+                            viewBox="0 0 10 100"
+                            preserveAspectRatio="none"
+                            focusable="false"
+                          >
+                            <title>{tip}</title>
+                            <rect
+                              className="bar-fill"
+                              x="0"
+                              y={100 - height}
+                              width="10"
+                              height={height}
+                            />
+                            {day.total > 0 && (
+                              <rect
+                                className="bar-cap"
+                                x="0"
+                                y={100 - height}
+                                width="10"
+                                height="1.5"
+                              />
+                            )}
+                          </svg>
+                          <span className="bar-tip" aria-hidden="true">
+                            {tip}
+                          </span>
+                        </div>
+                        <span>{label}</span>
                       </div>
-                      <span>
-                        {new Date(day.date + "T00:00:00Z").toLocaleDateString(
-                          "en",
-                          { month: "short", day: "numeric", timeZone: "UTC" },
-                        )}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
               {!data.daily.some((x) => x.total) && (
@@ -208,17 +237,36 @@ export default function Overview() {
                 <strong>{data.total_transfers}</strong>
                 <span>observed attempts</span>
               </div>
-              <div className="distribution" aria-hidden="true">
-                {distribution.map((d) => (
-                  <span
-                    className={d.className}
-                    key={d.label}
-                    style={{
-                      width: `${data.total_transfers ? (d.count / data.total_transfers) * 100 : 0}%`,
-                    }}
-                  />
-                ))}
-              </div>
+              <svg
+                className="distribution"
+                viewBox="0 0 100 12"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+                focusable="false"
+              >
+                {(() => {
+                  let x = 0;
+                  return distribution.map((d) => {
+                    const width = data.total_transfers
+                      ? (d.count / data.total_transfers) * 100
+                      : 0;
+                    const segment = (
+                      <rect
+                        className={d.className}
+                        key={d.label}
+                        x={x}
+                        y="0"
+                        width={width}
+                        height="12"
+                      >
+                        <title>{`${d.label}: ${d.count}`}</title>
+                      </rect>
+                    );
+                    x += width;
+                    return segment;
+                  });
+                })()}
+              </svg>
               <ul className="legend">
                 {distribution.map((d) => (
                   <li key={d.label}>

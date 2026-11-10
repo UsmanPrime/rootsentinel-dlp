@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -7,8 +7,9 @@ import {
   FileUp,
   RefreshCw,
   ShieldCheck,
+  X,
 } from "lucide-react";
-import { api, fixture, request } from "../../api";
+import { fixture, request } from "../../api";
 import type {
   PolicyView,
   TransferPage,
@@ -18,7 +19,17 @@ import { useAction, useGet, useTitle } from "../../lib/hooks";
 import { useSession } from "../../lib/session";
 import { bytes, date, reasonText, short } from "../../lib/errors";
 import { Evidence } from "../../components/Evidence";
+import { VerdictExplanation } from "../../components/Verdict";
+import { useEnvironment } from "../../lib/environment";
+import { useToast } from "../../lib/toast";
 import {
+  saveBlob,
+  transferLabel,
+  uploadWithProgress,
+  type UploadProgress,
+} from "../../lib/files";
+import {
+  Dialog,
   Empty,
   Failure,
   Loading,
@@ -30,14 +41,6 @@ import {
   Table,
 } from "../../components/ui";
 
-export function saveBlob(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = name;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
 export async function verifyDownload(
   data: ArrayBuffer,
   expected: string,
@@ -68,6 +71,11 @@ function TransferList() {
   const [offset, setOffset] = useState(0);
   const key = useRef<string | null>(null);
   const [validation, setValidation] = useState("");
+  const [progress, setProgress] = useState<UploadProgress | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const environment = useEnvironment();
+  const toast = useToast();
+  const cap = environment.maxUploadBytes;
   const policy = useGet<PolicyView>("/policies/active");
   const list = useGet<TransferPage>(`/transfers?limit=10&offset=${offset}`);
   function changeInput() {
@@ -75,28 +83,65 @@ function TransferList() {
     setValidation("");
     action.clear();
   }
+  function choose(next: File | null) {
+    setFile(next);
+    changeInput();
+    if (next && next.size > cap)
+      setValidation(
+        `Choose a file no larger than ${bytes(cap)}. This one is ${bytes(next.size)}.`,
+      );
+  }
+  function drop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDragging(false);
+    if (action.busy) return;
+    const dropped = event.dataTransfer.files;
+    if (dropped.length > 1) {
+      setValidation(
+        "Drop one file at a time. Each transfer is evaluated on its own.",
+      );
+      return;
+    }
+    choose(dropped[0] ?? null);
+  }
+  const label = file
+    ? transferLabel(file.name)
+    : selection === "renamed"
+      ? "renamed-copy.txt"
+      : "candidate.bin";
   async function submit() {
-    if (file && file.size > 10485760) {
-      setValidation("Choose a file no larger than 10 MiB.");
+    if (file && file.size > cap) {
+      setValidation(`Choose a file no larger than ${bytes(cap)}.`);
       return;
     }
     key.current ??= crypto.randomUUID();
+    setProgress(null);
+    const body = file ?? new Blob([fixture(selection)]);
     const result = await action.run(() =>
-      api<TransferView>(
-        `/transfers?filename=${selection === "renamed" && !file ? "renamed-copy.txt" : "candidate.bin"}`,
+      uploadWithProgress<TransferView>(
+        `/transfers?filename=${encodeURIComponent(label)}`,
+        body,
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "Idempotency-Key": key.current!,
-          },
-          body: file ?? fixture(selection),
+          "Content-Type": "application/octet-stream",
+          "Idempotency-Key": key.current!,
         },
         auth!.csrf_token,
+        setProgress,
       ),
     );
-    if (result) navigate("/transfers/" + result.id);
+    setProgress(null);
+    if (result) {
+      toast(
+        `${label}: ${result.state.replaceAll("_", " ")}`,
+        result.state === "BLOCKED" ? "error" : "success",
+      );
+      navigate("/transfers/" + result.id);
+    }
   }
+  const uploaded =
+    progress && progress.total
+      ? Math.round((progress.loaded / progress.total) * 100)
+      : null;
   return (
     <>
       <PageHeader
@@ -107,7 +152,7 @@ function TransferList() {
       <div className="gateway-grid">
         <Panel
           title="Submit a transfer"
-          subtitle="Authenticated local workflow · 10 MiB limit"
+          subtitle={`Authenticated workflow · ${bytes(cap)} limit`}
         >
           <div className="step-track" aria-label="Transfer workflow">
             <span className="current">01 Select input</span>
@@ -137,32 +182,86 @@ function TransferList() {
                 <option value="empty">Empty file</option>
               </select>
             </label>
-            <label className="file-picker">
-              <FileUp size={24} />
-              <strong>Or choose a local synthetic file</strong>
-              <span>The original filename is not used as a storage path.</span>
-              <input
-                type="file"
-                disabled={action.busy}
-                onChange={(e) => {
-                  setFile(e.target.files?.[0] ?? null);
-                  changeInput();
-                }}
-              />
-            </label>
-            <div className="selected-file">
-              <span>{file ? file.name : selection + ".txt"}</span>
-              <strong>
-                {bytes(file?.size ?? fixture(selection).byteLength)}
-              </strong>
+            <div
+              className={`dropzone ${dragging ? "dragging" : ""} ${file ? "has-file" : ""}`}
+              onDragOver={(event) => {
+                event.preventDefault();
+                if (!action.busy) setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={drop}
+            >
+              <FileUp size={26} aria-hidden="true" />
+              <strong>Drop a synthetic file here</strong>
+              <span className="muted">
+                or{" "}
+                <label className="dropzone-browse">
+                  choose a file
+                  <input
+                    type="file"
+                    className="sr-only"
+                    disabled={action.busy}
+                    onChange={(e) => {
+                      choose(e.target.files?.[0] ?? null);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>{" "}
+                · up to {bytes(cap)} · replaces the synthetic input above
+              </span>
             </div>
+            <dl className="file-details" aria-label="Input to evaluate">
+              <div>
+                <dt>Input</dt>
+                <dd>
+                  {file ? file.name : `Synthetic: ${selection}`}
+                  {file && (
+                    <button
+                      className="icon-button small"
+                      aria-label="Remove chosen file"
+                      disabled={action.busy}
+                      onClick={() => choose(null)}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>Size</dt>
+                <dd>{bytes(file?.size ?? fixture(selection).byteLength)}</dd>
+              </div>
+              <div>
+                <dt>Type</dt>
+                <dd>{file ? file.type || "not declared" : "text/plain"}</dd>
+              </div>
+              <div>
+                <dt>Label sent</dt>
+                <dd>
+                  <code>{label}</code>
+                </dd>
+              </div>
+            </dl>
             <Failure error={action.error} />
             {validation && <Notice tone="error">{validation}</Notice>}
             {action.busy && (
-              <Notice>
-                Receiving and evaluating the actual input. No bytes have been
-                released.
-              </Notice>
+              <div className="upload-progress" role="status">
+                <span>
+                  {uploaded === null || uploaded < 100
+                    ? `Uploading the input${uploaded === null ? "" : `: ${uploaded}%`}`
+                    : "Upload complete. The server is evaluating the bytes."}{" "}
+                  No bytes have been released.
+                </span>
+                {uploaded !== null && uploaded < 100 ? (
+                  <progress
+                    max={100}
+                    value={uploaded}
+                    aria-label="Upload progress"
+                  />
+                ) : (
+                  <progress aria-label="Evaluation in progress" />
+                )}
+              </div>
             )}
             <button
               className="button primary full"
@@ -306,6 +405,8 @@ function TransferDetail({ id }: { id: string }) {
   const action = useAction();
   const [verified, setVerified] = useState<string | null>(null);
   const [integrityFailure, setIntegrityFailure] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const toast = useToast();
   const data = record.data;
   useEffect(() => {
     if (data?.state !== "SCANNING") return;
@@ -313,6 +414,7 @@ function TransferDetail({ id }: { id: string }) {
     return () => clearTimeout(timer);
   }, [data?.state, data, record.refresh]);
   async function download() {
+    setConfirming(false);
     await action.run(async () => {
       try {
         const response = await request(
@@ -333,6 +435,9 @@ function TransferDetail({ id }: { id: string }) {
           return;
         }
         setVerified(digest);
+        toast(
+          "Downloaded. The received bytes match the approved SHA-256 and length.",
+        );
         saveBlob(
           new Blob([buffer], { type: "application/octet-stream" }),
           `rootsentinel-${id}.bin`,
@@ -391,7 +496,7 @@ function TransferDetail({ id }: { id: string }) {
                 <button
                   className="button primary"
                   disabled={action.busy}
-                  onClick={() => void download()}
+                  onClick={() => setConfirming(true)}
                 >
                   <Download size={17} />
                   {action.busy ? "Verifying release…" : "Verified download"}
@@ -404,6 +509,43 @@ function TransferDetail({ id }: { id: string }) {
               )}
             </div>
           </div>
+          <Dialog
+            open={confirming}
+            close={() => setConfirming(false)}
+            title="Release this file once?"
+          >
+            <p>
+              The gateway releases these bytes a single time. After this
+              download the transfer is spent; another copy needs a new transfer
+              and a new evaluation.
+            </p>
+            <p className="tiny muted">
+              Your browser will hash the received bytes and save the file only
+              if they match the approved SHA-256 and length.
+            </p>
+            <div className="dialog-actions">
+              <button
+                className="button secondary"
+                onClick={() => setConfirming(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="button primary"
+                disabled={action.busy}
+                onClick={() => void download()}
+              >
+                <Download size={16} />
+                Download once
+              </button>
+            </div>
+          </Dialog>
+          {data.scan && (
+            <VerdictExplanation
+              scan={data.scan}
+              privileged={auth!.user.role !== "EMPLOYEE"}
+            />
+          )}
           <Failure error={action.error} />
           {integrityFailure && (
             <Notice tone="error">

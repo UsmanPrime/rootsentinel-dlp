@@ -30,7 +30,9 @@ def main():
         key_file = Path(external) / "secrets" / "audit-keys.json"
         provision(key_file)
         settings = Settings(paths, f"sqlite:///{paths.database.as_posix()}", "local",
-                            origin=os.environ.get("ROOTSENTINEL_ORIGIN", "http://127.0.0.1:5173"), secure_cookies=False, audit_key_file=key_file, checkpoint_root=Path(external) / "checkpoints")
+                            origin=os.environ.get("ROOTSENTINEL_ORIGIN", "http://127.0.0.1:5173"), secure_cookies=False, audit_key_file=key_file, checkpoint_root=Path(external) / "checkpoints",
+                            # Optional: serve a built interface from the API itself, as the hosted image does (enforced CSP).
+                            frontend_dir=Path(os.environ["ROOTSENTINEL_FRONTEND_DIR"]).resolve() if os.environ.get("ROOTSENTINEL_FRONTEND_DIR") else None)
         cfg = Config(str(SOURCE_ROOT / "backend/alembic.ini"))
         cfg.attributes["settings"] = settings
         command.upgrade(cfg, "head")

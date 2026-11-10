@@ -50,17 +50,24 @@ jobs:
       - run: python -m playwright install --with-deps chromium
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: frontend
-      - name: Real browser and adversarial acceptance
+      - name: Build the interface
+        run: npm run build
+        working-directory: frontend
+        env:
+          ROOTSENTINEL_FRONTEND_DIST: ${{ runner.temp }}/rootsentinel-ui
+      - name: Real browser and adversarial acceptance (built interface served by the API, enforced CSP)
         shell: bash
+        env:
+          ROOTSENTINEL_FRONTEND_DIR: ${{ runner.temp }}/rootsentinel-ui
+          ROOTSENTINEL_API_PORT: '5173'
         run: |
           export ROOTSENTINEL_BROWSER_STATE="$RUNNER_TEMP/rootsentinel-browser-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          export ROOTSENTINEL_BROWSER_EVIDENCE="$RUNNER_TEMP/rootsentinel-browser-evidence"
           (cd backend && python -B -m tests.browser_server) > "$RUNNER_TEMP/rootsentinel-api.log" 2>&1 &
           backend_pid=$!
-          (cd frontend && npm run dev -- --port 5173 --strictPort) > "$RUNNER_TEMP/rootsentinel-ui.log" 2>&1 &
-          frontend_pid=$!
-          trap 'kill "$backend_pid" "$frontend_pid" 2>/dev/null || true' EXIT
+          trap 'kill "$backend_pid" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:8000/health > /dev/null && curl -fsS http://127.0.0.1:5173/ > /dev/null; then break; fi
+            if curl -fsS http://127.0.0.1:5173/health > /dev/null && curl -fsS http://127.0.0.1:5173/login > /dev/null; then break; fi
             sleep 1
           done
           python -B scripts/browser_phase04.py
@@ -70,8 +77,8 @@ jobs:
         with:
           name: sanitized-browser-evidence
           path: |
-            docs/evidence/phase-04-browser.json
-            docs/evidence/phase-04-negative-browser.json
+            ${{ runner.temp }}/rootsentinel-browser-evidence/browser-report.json
+            ${{ runner.temp }}/rootsentinel-browser-evidence/negative-browser-report.json
   postgres:
     runs-on: ubuntu-latest
     services:
@@ -112,6 +119,8 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: frontend
       - run: npm run typecheck
+        working-directory: frontend
+      - run: npm run format:check
         working-directory: frontend
       - run: npm test
         working-directory: frontend

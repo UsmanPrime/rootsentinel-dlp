@@ -13,14 +13,20 @@ from uuid import uuid4
 from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "docs/evidence/phase-04"
+AXE = (ROOT / "frontend/node_modules/axe-core/axe.min.js").read_text(encoding="utf-8")
+# Every CSP violation is also written to the console, so one listener catches them across navigations.
+CSP_HOOK = ("document.addEventListener('securitypolicyviolation', e => console.error('CSP violation: ' + e.violatedDirective + ' '"
+            " + (e.blockedURI || 'inline')));")
+NETWORK_STATUS = "Failed to load resource"   # Chrome's line for an HTTP error status; the negative checks cause these on purpose.
 
 
 def main():
     state = Path(os.environ["ROOTSENTINEL_BROWSER_STATE"])
     credentials = json.loads((state / "browser-session.json").read_text())
     origin = os.environ.get("ROOTSENTINEL_ORIGIN", "http://127.0.0.1:5174")
-    OUT.mkdir(exist_ok=True)
+    # Output stays outside the repository by default, so a run never rewrites the recorded Phase 04 evidence.
+    OUT = Path(os.environ.get("ROOTSENTINEL_BROWSER_EVIDENCE") or state / "evidence")
+    OUT.mkdir(parents=True, exist_ok=True)
     report = {"transport": "Chrome / real loopback HTTP / SQLite", "checks": [], "accessibility": [], "responsive": [], "screenshots": [], "timings_ms": {}}
     def passed(name):
         report["checks"].append(name)
@@ -29,7 +35,9 @@ def main():
         browser = p.chromium.launch(channel=os.environ.get("ROOTSENTINEL_BROWSER_CHANNEL", "chrome") or None, headless=True)
         report["browser"] = browser.version
         context = browser.new_context(viewport={"width": 1440, "height": 1000}, accept_downloads=True, reduced_motion="reduce")
-        page = context.new_page(); errors = []; broken_assets = []
+        context.add_init_script(CSP_HOOK)
+        page = context.new_page(); errors = []; broken_assets = []; console_errors = []
+        page.on("console", lambda m: console_errors.append(m.text[:300]) if m.type == "error" and not m.text.startswith(NETWORK_STATUS) else None)
         page.on("pageerror", lambda _: errors.append("uncaught JavaScript error"))
         page.on("response", lambda r: broken_assets.append(r.status) if r.status >= 400 and r.request.resource_type in {"script", "stylesheet", "image", "font"} else None)
         def ready():
@@ -38,9 +46,9 @@ def main():
             page.goto(origin + path); ready()
         def screenshot(name):
             ready(); page.screenshot(path=str(OUT / (name + ".png")), full_page=True, animations="disabled")
-            report["screenshots"].append("phase-04/" + name + ".png")
+            report["screenshots"].append(name + ".png")
         def axe(name):
-            page.add_script_tag(path=str(ROOT / "frontend/node_modules/axe-core/axe.min.js"))
+            page.evaluate(AXE)   # evaluated through the browser's debugging protocol, which the page's CSP does not govern
             result = page.evaluate("async () => { const r = await axe.run(document, {runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}}); return {violations:r.violations.map(v=>({id:v.id,impact:v.impact,targets:v.nodes.map(n=>n.target)})), incomplete:r.incomplete.length}; }")
             report["accessibility"].append({"page": name, **result})
             assert not result["violations"], json.dumps(result["violations"])
@@ -65,7 +73,11 @@ def main():
             value = response.value.json(); assert response.value.status == 201 and value["state"] == expected, value
             expect(page.locator(".verdict-banner")).to_be_visible(); ready(); report["timings_ms"][kind + "_submit_to_visible"] = round((time.perf_counter() - started) * 1000, 2); return value
         try:
-            visit("/login"); axe("login"); screenshot("login-desktop")
+            served = page.goto(origin + "/login"); ready()
+            policy = served.headers.get("content-security-policy", "")
+            assert "default-src 'none'" in policy and "unsafe-inline" not in policy and "content-security-policy-report-only" not in served.headers, policy
+            report["content_security_policy"] = "enforced"; passed("interface served with the enforced content security policy")
+            axe("login"); screenshot("login-desktop")
             page.get_by_label("Username", exact=True).fill("nonexistent-synthetic-user"); page.get_by_label("Password", exact=True).fill("invalid-synthetic-password")
             page.get_by_role("button", name="Sign in", exact=True).click(); expect(page.get_by_role("alert")).to_be_visible(); passed("invalid login safely rejected")
             login("browser-admin"); passed("administrator login")
@@ -100,8 +112,10 @@ def main():
             partial = transfer("partial", "BLOCKED"); assert partial["scan"]["decision"]["reason"] == "BLOCK_THRESHOLD_MET"; passed("real partial-block match")
             allowed = transfer("benign", "ALLOWED")
             started = time.perf_counter()
+            page.get_by_role("button", name="Verified download", exact=True).click()
+            expect(page.get_by_role("dialog")).to_contain_text("single time")
             with page.expect_download() as download:
-                page.get_by_role("button", name="Verified download", exact=True).click()
+                page.get_by_role("button", name="Download once", exact=True).click()
             data = Path(download.value.path()).read_bytes(); assert data == b"# unrelated synthetic public note\n" * 80
             assert sha256(data).hexdigest() == allowed["file_sha256"]
             report["download"] = {"bytes": len(data), "sha256": sha256(data).hexdigest(), "byte_equality": True}
@@ -125,7 +139,7 @@ def main():
             stale = transfer("benign", "ALLOWED")
             visit("/policies"); page.get_by_role("button", name="Create policy version").click(); page.get_by_label("Minimum matched outbound bytes").fill("1024"); page.get_by_role("button", name="Confirm new version").click(); expect(page.get_by_text("is now active.", exact=False)).to_be_visible(); passed("new immutable policy version")
             screenshot("policies-desktop"); axe("policies")
-            visit(f"/transfers/{stale['id']}"); page.get_by_role("button", name="Verified download", exact=True).click(); expect(page.get_by_role("alert")).to_be_visible(); expect(page.get_by_role("button", name="Verified download", exact=True)).to_have_count(0); passed("stale release fails closed and UI refreshes")
+            visit(f"/transfers/{stale['id']}"); page.get_by_role("button", name="Verified download", exact=True).click(); page.get_by_role("button", name="Download once", exact=True).click(); expect(page.get_by_role("alert")).to_be_visible(); expect(page.get_by_role("button", name="Verified download", exact=True)).to_have_count(0); passed("stale release fails closed and UI refreshes")
             visit("/transfers/00000000-0000-4000-8000-000000000000"); expect(page.get_by_role("alert")).to_be_visible(); passed("missing transfer safe error")
             # Guide actions exercise live backend, with no fixture response mocking.
             visit("/guide"); page.get_by_role("button", name="02 Register a synthetic asset").click(); page.get_by_role("button", name="Register guide sample").click(); expect(page.get_by_text("Registered version 1.", exact=False)).to_be_visible()
@@ -158,14 +172,19 @@ def main():
             login("browser-analyst"); visit("/policies"); expect(page.get_by_role("button", name="Create policy version")).to_have_count(0)
             policy = context.request.get(origin + "/api/v1/policies/active").json()
             assert context.request.post(origin + "/api/v1/policies", data={"expected_version": policy["id"], "threshold": 1024}, headers={"Origin": origin, "X-CSRF-Token": csrf()}).status == 403; passed("analyst cannot modify policy")
+            csp_violations = [e for e in console_errors if e.startswith("CSP violation") or "Content Security Policy" in e]
+            report.update(csp_violations=len(csp_violations), console_errors=len(console_errors))
+            assert not csp_violations, csp_violations
+            assert not console_errors, console_errors
             assert not errors and not broken_assets, (errors, broken_assets)
+            passed("zero CSP violations and zero console errors (HTTP error statuses from the negative checks excluded)")
             report.update(verdict="PASS", page_errors=len(errors), failed_assets=len(broken_assets))
         except Exception as error:
             report.update(verdict="FAIL", failure_type=type(error).__name__, completed_checks=len(report["checks"]))
             page.screenshot(path=str(state / "phase04-failure.png"), full_page=True)
             raise
         finally:
-            (ROOT / "docs/evidence/phase-04-browser.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+            (OUT / "browser-report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
             browser.close()
 
 

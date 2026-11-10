@@ -10,9 +10,13 @@ import {
   Notice,
   PageHeader,
   Panel,
+  SortHeader,
   Status,
   Table,
+  nextSort,
+  type SortDirection,
 } from "../../components/ui";
+import { useToast } from "../../lib/toast";
 import { useAction, useGet, useTitle } from "../../lib/hooks";
 import { date, short } from "../../lib/errors";
 import { useSession } from "../../lib/session";
@@ -42,9 +46,32 @@ export default function Audit() {
   const [checkpoint, setCheckpoint] = useState(false);
   const [retained, setRetained] = useState(false);
   const [selected, setSelected] = useState<Event>();
+  const [kind, setKind] = useState("");
+  const [sort, setSort] = useState<{
+    column: string;
+    direction: SortDirection;
+  }>({
+    column: "sequence",
+    direction: "ascending",
+  });
+  const toast = useToast();
   const events = useGet<{ events: Event[] }>(
     `/audit/events?limit=10&after=${cursors[cursors.length - 1]}`,
   );
+  const kinds = Array.from(
+    new Set(events.data?.events.map((row) => row.event.kind) ?? []),
+  ).sort();
+  const rows = (events.data?.events ?? [])
+    .filter((row) => !kind || row.event.kind === kind)
+    .sort((a, b) => {
+      const x =
+        sort.column === "timestamp" ? a.event.timestamp : a.event.sequence;
+      const y =
+        sort.column === "timestamp" ? b.event.timestamp : b.event.sequence;
+      return (
+        (x < y ? -1 : x > y ? 1 : 0) * (sort.direction === "ascending" ? 1 : -1)
+      );
+    });
   return (
     <>
       <PageHeader
@@ -68,6 +95,12 @@ export default function Audit() {
                   if (v) {
                     setVerification(v);
                     events.refresh();
+                    toast(
+                      v.valid
+                        ? `Audit chain verified through sequence ${v.through_sequence}`
+                        : "Audit verification failed. See the result below.",
+                      v.valid ? "success" : "error",
+                    );
                   }
                 })
             }
@@ -112,21 +145,50 @@ export default function Audit() {
           </button>
         }
       >
-        {events.loading && <Loading />}
+        {events.data && events.data.events.length > 0 && (
+          <div className="filter-bar">
+            <label className="inline-label">
+              Event type
+              <select value={kind} onChange={(e) => setKind(e.target.value)}>
+                <option value="">All event types on this page</option>
+                {kinds.map((k) => (
+                  <option key={k} value={k}>
+                    {k.replaceAll("_", " ")}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+        {events.loading && <Loading rows={5} />}
         {events.data &&
-          (events.data.events.length ? (
+          (rows.length ? (
             <Table label="Audit event chain">
+              <caption className="sr-only">
+                Audit events. Filtering and sorting apply to the events on this
+                page.
+              </caption>
               <thead>
                 <tr>
-                  <th>Sequence</th>
-                  <th>Event</th>
-                  <th>Time</th>
-                  <th>Actor</th>
-                  <th>Key ID</th>
+                  <SortHeader
+                    label="Sequence"
+                    column="sequence"
+                    sort={sort}
+                    change={(c) => setSort(nextSort(sort, c))}
+                  />
+                  <th scope="col">Event</th>
+                  <SortHeader
+                    label="Time"
+                    column="timestamp"
+                    sort={sort}
+                    change={(c) => setSort(nextSort(sort, c))}
+                  />
+                  <th scope="col">Actor</th>
+                  <th scope="col">Key ID</th>
                 </tr>
               </thead>
               <tbody>
-                {events.data.events.map((row) => (
+                {rows.map((row) => (
                   <tr key={row.event.sequence}>
                     <td>
                       <button
@@ -151,9 +213,26 @@ export default function Audit() {
               </tbody>
             </Table>
           ) : (
-            <Empty title="No further audit events">
-              Security operations append actual events. Refresh after using the
-              gateway.
+            <Empty
+              title={
+                kind
+                  ? "No events of this type on this page"
+                  : "No further audit events"
+              }
+              action={
+                kind ? (
+                  <button
+                    className="button secondary"
+                    onClick={() => setKind("")}
+                  >
+                    Show all event types
+                  </button>
+                ) : undefined
+              }
+            >
+              {kind
+                ? "Choose another event type, or go to the next page."
+                : "Security operations append actual events. Refresh after using the gateway."}
             </Empty>
           ))}
         <nav className="pager" aria-label="Audit pagination">
@@ -259,6 +338,7 @@ export default function Audit() {
                     setCheckpoint(false);
                     setRetained(true);
                     events.refresh();
+                    toast("Checkpoint retained in the external store");
                   }
                 })
             }

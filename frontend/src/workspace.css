@@ -1,19 +1,53 @@
-/* Phase 04 tokens and workspace components. Legacy workbench remains compatible. */
+/* Design tokens and workspace components. Colour pairs meet WCAG 2.2 AA on the surfaces they are used with. */
 :root {
+  /* surfaces */
   --background: #0c1118;
+  --surface-sunken: #0f1721;
   --surface: #131c27;
+  --surface-raised: #1d2a39;
+  /* text */
   --text: #e9f2fa;
+  --text-soft: #c9d7e5;
   --muted: #a5b4c6;
-  --accent: #63dfc9;
+  --muted-strong: #879bb4;
+  /* lines */
   --border: #2b3a4c;
+  --border-strong: #42556b;
+  /* brand and focus */
+  --accent: #63dfc9;
+  --accent-bg: #12302b;
+  --focus: #91ecde;
+  /* status: ALLOW, BLOCK, ERROR, caution and information; severities reuse BLOCK (HIGH) and caution (MEDIUM) */
+  --allow: #63cbb9;
+  --block: #ffaaaa;
+  --block-soft: #e69398;
   --danger: #ffaaaa;
   --warning: #f0cb88;
+  --info: #9cc5ff;
+  --info-bg: #142338;
+  --info-border: #36557d;
+  /* charts */
+  --chart-bar: #49b7a5;
+  --chart-bar-cap: #8ee4d6;
+  --chart-grid: #293a4a;
+  /* type scale */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  /* shape, depth, motion */
+  --radius-sm: 6px;
   --radius: 10px;
-  --focus: #91ecde;
+  --elevation-1: 0 4px 12px #0004;
+  --elevation-2: 0 12px 32px #0006;
   --shadow: 0 16px 48px #0005;
   --motion: 140ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
   --space: 8px;
+  /* layers */
   --z-header: 20;
+  --z-toast: 90;
   --z-skip: 100;
 }
 body {
