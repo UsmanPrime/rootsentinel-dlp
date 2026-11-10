@@ -1,4 +1,4 @@
-# Detection specification — Phase 02
+# Detection specification
 
 The cryptographic profile remains `rs-fixed-sha256-v1`. No Phase 01 hash,
 descriptor, tree rule, fixture or public cryptographic function changed.
@@ -7,7 +7,8 @@ descriptor, tree rule, fixture or public cryptographic function changed.
 `app.policy.evaluate(...)` returns a separate decision. `app.scans.run_scan(...)`
 authorizes the actor, fingerprints frozen input, locks registry state, reads the
 active policy, detects, evaluates and persists all records in one transaction.
-There is no delivery, forwarding, download or release capability.
+Detection itself has no delivery, forwarding, download or release capability; release is a
+separate gateway step ([transfer specification](transfer-spec.md)).
 
 ## Registry lifecycle
 
@@ -22,7 +23,7 @@ Adding a version requires `expected_version` equal to the asset's current versio
 Only the current version of each non-retired asset participates in new scans.
 Older versions remain retrievable and referenced by earlier scans. Retirement is
 idempotent, increments the registry revision once, and retains all historical rows.
-Retired assets cannot receive new versions in this phase; register a new asset.
+Retired assets cannot receive new versions; register a new asset.
 
 ## Exact and block evidence
 
@@ -49,8 +50,10 @@ sum their matched bytes together to meet a per-asset policy threshold.
 Evidence bounds: at most 1,000 matching versions and 100,000 combined source and
 outbound references. Query limits are applied before row materialization. Exceeding
 either bound returns `EVIDENCE_LIMIT`/503/INDETERMINATE; evidence is not silently
-truncated into an ALLOW. The browser caps display to 20 matches and 20 blocks/indices
-per match, while the authenticated scan API returns the complete bounded evidence.
+truncated into an ALLOW. The workspace evidence view (`frontend/src/components/Evidence.tsx`)
+displays at most 20 matching versions, 20 intervals and 8 block groups per match, with 12
+source and outbound indices per group, while the authenticated scan API returns the complete
+bounded evidence.
 
 ## Testable limitations
 
@@ -71,5 +74,5 @@ universal statements about every transformed file: other unchanged aligned block
 may still match. SHA-256 equality does not prove intent, provenance or exclusive
 ownership. Merkle inclusion commits to integrity and ordering, not DLP similarity.
 
-The registry is one local workspace, not a multi-tenant service. Destination context
-is intentionally absent because this phase does not transfer files.
+The registry is one workspace, not a multi-tenant service. Detection receives no
+destination context: the gateway and the staging agent decide where released bytes go.

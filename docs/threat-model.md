@@ -1,8 +1,8 @@
-# Implemented threat model — Phase 03
+# Implemented threat model
 
-The system evaluates local synthetic uploads and enforces bounded single-use
-downloads through its controlled gateway. The original product context and future trust-boundary diagram remain
-in [architecture](architecture.md); this document specifies today's controls.
+The system evaluates authenticated uploads and enforces bounded single-use
+downloads through its controlled gateway, locally and on the hosted demo. The product context and trust-boundary
+diagram are in [architecture](architecture.md); this document specifies today's controls.
 
 Trusted: backend process, OS, private runtime-directory owner, database operator,
 authorized asset baseline and administrator. Untrusted: browser parameters, filenames,
@@ -13,7 +13,7 @@ isolation claim is made; the deployment is a single workspace.
 
 ```mermaid
 flowchart LR
-  B[Untrusted local browser] --> V[Vite same-origin proxy]
+  B[Untrusted browser] --> V[Same origin: Vite proxy in development, built frontend served by the API when hosted]
   V --> G[Origin Host size and public-mode guards]
   G --> A[Opaque session and role authorization]
   A --> I[Private temporary intake]
@@ -34,13 +34,13 @@ flowchart LR
 | Client chooses hashes | Hash server-received bytes; no registration hash input | Authorized malicious baseline remains possible |
 | Traversal/filename injection | Strict display labels, generated tempfile name, no supplied storage paths | Not a hostile local filesystem admission adapter |
 | Mutable upload source | One streamed temporary copy becomes immutable bytes; original never reread | Client can upload arbitrary bytes; no producer authenticity |
-| Partial/oversized upload | Count actual bytes, 60-second intake timeout, declared-length consistency, cleanup | Process crash may leave platform-dependent temporary files; no secure erasure claim |
-| Memory/query amplification | 10 MiB, two intake slots, batched indexed lookup, evidence caps, bounded pages | Sustained authenticated traffic can exhaust disk metadata; operator quotas/retention later |
+| Partial/oversized upload | Count actual bytes against the configurable upload cap, 60-second intake timeout, declared-length consistency, cleanup | Process crash may leave platform-dependent temporary files; no secure erasure claim |
+| Memory/query amplification | Upload cap `ROOTSENTINEL_MAX_UPLOAD_BYTES` (default 10 MiB), two intake slots, batched indexed lookup, evidence caps, bounded pages | Sustained authenticated traffic can exhaust disk metadata; operator quotas/retention later |
 | Historical changes | Immutable-version DB triggers and immutable persisted evaluations | DBA can disable triggers; HMAC verification detects covered event tampering without keys |
 | Concurrent policy/registry edit | Shared state transaction lock and optimistic version preconditions | Serialized writes limit throughput |
 | Infrastructure failure | Rollback and INDETERMINATE response, never authorized release | Unavailable DB cannot persist its own failure |
 | Logs disclose input | Allowlisted errors, hidden SQL parameters, no body logging; sentinel tests | Operator/infrastructure logs still need review |
-| Public upload exposure | Default public-demo mode denies all operational API routes | Public synthetic account workflow is not yet implemented |
+| Public upload exposure | Default `public_demo` mode denies all operational API routes; the hosted demo has no anonymous access (operator-provisioned accounts only) | An anonymous visitor mode with synthetic fixtures is an open decision and is not implemented |
 | Shifted/encoded/compressed content | Reproducible limitation tests | Fixed chunks do not decode or perform semantic analysis |
 | Transfers outside this application | No claim of prevention | All other network/OS exfiltration paths remain possible |
 
@@ -53,9 +53,9 @@ Temporary files are closed/unlinked on normal errors, disconnects and cancellati
 their bytes briefly exist in plaintext and are not securely erased from disks/RAM.
 
 SHA-256 is unkeyed. Session tokens rotate at login and can be revoked; password reset
-revokes existing sessions. Future audit integrity keys must be independently generated,
-stored outside the database/source, rotated with key IDs and externally checkpointed.
-No audit-key functionality is falsely represented as working in this phase.
+revokes existing sessions. Audit integrity keys are independently generated, stored
+outside the database and source, rotated with key IDs and checkpointed externally; see
+the [audit specification](audit-spec.md).
 
 ## Phase 03 implemented boundary
 
@@ -73,8 +73,10 @@ application table or defeat a compromised key/host. Tail truncation needs an ind
 trusted checkpoint. Pre-Phase-03 records have no retroactive HMAC guarantee. Runtime and
 checkpoint failures may deny service; safety is prioritized over automatic retries.
 
-Resource limits: 10 MiB inputs, two processing slots, 20 pending snapshots globally, ten
-per account, 30/account and 120/global transfer attempts/minute, 20,000 audit events.
+Resource limits: upload cap `ROOTSENTINEL_MAX_UPLOAD_BYTES` (default 10 MiB, 1 MiB on the
+hosted demo), two processing slots, 20 pending snapshots globally, ten per account,
+`ROOTSENTINEL_TRANSFER_RATE_PER_MINUTE` transfer attempts per account per minute (default 30,
+10 on the hosted demo) and 120 globally, 20,000 audit events.
 Deployment is one worker; restart clears in-memory rate buckets. Analysis notes are
 user-entered text: do not paste sensitive source or secrets into them. Export is unsigned
 metadata, not independently certified forensic evidence.
@@ -88,8 +90,10 @@ React escapes untrusted text; no raw HTML rendering is used. Downloads use serve
 generated names and a browser digest/length comparison before Blob saving. This is
 additional defense, not a replacement for pre-release server byte verification.
 Overview counts and tree views expose only authorized metadata; public mode remains
-closed. The static app requires same-origin routing and appropriate production CSP
-when deployment is addressed in a later phase.
+closed. The API serves the built app from the same origin. Every response carries an
+enforced Content-Security-Policy (`default-src 'none'`, `script-src 'self'`, `style-src 'self'`,
+no `'unsafe-inline'`), locally and hosted; the interface has no inline scripts or inline
+style attributes.
 
 ## Phase 05 staging agent boundary
 
@@ -125,23 +129,24 @@ handled by re-verifying disk state during recovery, not by directory fsync, whic
 
 Scope: one free-tier container (the gateway, the built frontend and `bootstrap`) in front of a free PostgreSQL service, reached over
 https through the host's reverse proxy. **No anonymous or visitor access exists**; every account is created by the operator.
-Nothing here has been deployed or measured yet. The staging agent stays local and independent of this surface.
+It is deployed; the measurements are in the [Phase 06A evidence](evidence/phase-06a.md). The staging agent stays local and
+independent of this surface.
 
 | Threat | Control (test) | Residual risk |
 |---|---|---|
-| Unauthenticated use of the API | Every `/api/v1` route except sign-in answers 401; a test iterates all routes and fails if an unexpected route appears (`test_every_anonymous_api_route_is_denied_...`) | Sign-in itself is open to guessing within the existing limits (5 per user, 15 per address and 30 overall per minute) |
+| Unauthenticated use of the API | Every `/api/v1` route except sign-in and the session check answers 401 (the session check answers 204 and reveals nothing); a test iterates all routes and fails if an unexpected route appears (`test_every_anonymous_api_route_is_denied_...`) | Sign-in itself is open to guessing within the existing limits (5 per user, 15 per client and 30 overall per minute) |
 | `public_demo` weakened | Unchanged: every API route stays denied (`test_public_demo_still_denies_every_api_route`) | None added |
 | Forged `Host` or `Origin` | Exact Host allow-list (origin plus explicit extra hosts, no wildcards) and exact Origin on every non-GET, also for static files (`test_host_and_origin_checks_...`) | A misconfigured origin makes the site return 400 until fixed |
-| Spoofed `X-Forwarded-For` evades the per-address login limit | Hop-count trust: the entry N from the right is used, otherwise the socket peer; the spoof test shows a constant limit (`test_login_throttle_keys_on_the_trusted_forwarded_address_...`) | The right N is unknown until measured on the host. A wrong N shares or splits buckets. A classroom NAT shares one bucket. |
+| Spoofed client address evades the per-client login limit | Header mode (`ROOTSENTINEL_CLIENT_IP_HEADER=True-Client-IP` on the hosted demo): the key is the one address in that header; a missing, repeated or invalid value goes to one shared `unidentified` bucket; `X-Forwarded-For` is ignored; startup refuses the header together with nonzero hops (`test_client_ip.py`). Hop-count mode remains available and is tested (`test_login_throttle_keys_on_the_trusted_forwarded_address_...`) | Relies on Cloudflare overwriting `True-Client-IP` in front of Render; re-verify after any edge change. A classroom NAT shares one bucket |
 | Path traversal or secret exposure through static files | Only GET and HEAD; the resolved path must stay inside the frontend directory; dot-files and backslashes refused; unknown file-like paths are 404, not HTML (`test_static_serving_cannot_leave_...`) | A symlink test is skipped on Windows (runs on Linux CI) |
 | API documentation reveals the surface | Interactive docs and `/openapi.json` are off for hosted and `public_demo`; the schema is public in the repository anyway | None meaningful |
-| Transport and browser hardening | HSTS (no preload, no subdomains); `X-Frame-Options: DENY`; `no-store`; nosniff | The CSP is **report-only**, not enforced; four React style attributes need `style-src-attr 'unsafe-inline'` |
+| Transport and browser hardening | Enforced CSP on every response (no `'unsafe-inline'`); HSTS when hosted (no preload, no subdomains); `X-Frame-Options: DENY`; `no-store`; nosniff (`test_hosted.py`; the browser acceptance job fails on any CSP violation) | The CSP does not stop a malicious same-origin script that the build itself contains |
 | Secrets in the repository, image or logs | Key file and account hashes arrive as platform secret files; hashes only, never passwords; `bootstrap` and the entrypoint print counts and generic errors; access logging is off; CI uses throwaway secrets (`test_bootstrap_*`, publication audit) | The platform operator and anyone with the dashboard can read the key and the database URL; host compromise is out of scope |
-| Privilege on the host | The server runs as uid 10001; root is used only to copy two files (the CI `container` job checks the server uid; pending hosted CI) | A container escape or a malicious dependency is not addressed |
+| Privilege on the host | The server runs as uid 10001; root is used only to copy two files (the CI `container` job, a required check, verifies the server uid) | A container escape or a malicious dependency is not addressed |
 | Audit stream filled or fail-closed | Hosted per-account transfer limit (10 per minute in `render.yaml`; the code default is 30), 1 MiB upload cap, the smoke test prints the sequence number; the audit still fails closed at 20000 events | Only authenticated accounts can add events, but a leaked class password can still exhaust the stream; recovery means a new database |
 | Free-tier restarts and sleep | Restart recovery marks interrupted transfers `ERROR` or `DELIVERY_UNKNOWN`; a vanished snapshot makes release fail closed | In-flight demonstrations can be lost; retained snapshots and checkpoints are not durable |
 | Audit rewrite after a restart | The HMAC chain and the key held only by the app host (see "Audit integrity on a hosted free tier") | **Tail truncation and database rollback are undetectable after a restart**: checkpoints live on the ephemeral disk. Not forensic evidence. |
-| Uploaded content | Authenticated accounts only; 1 MiB by default; never executed or decompressed; removed on BLOCK, release or expiry; the interface asks for synthetic data | The reminder is not a control: a user can still upload real data, and chunk hashes and the label persist in the database |
+| Uploaded content | Authenticated accounts only; 1 MiB on the hosted demo (code default 10 MiB); never executed or decompressed; removed on BLOCK, release or expiry; the interface asks for synthetic data | The reminder is not a control: a user can still upload real data, and chunk hashes and the label persist in the database |
 | Supply chain | Locked, pinned Python and Node dependencies; base images pinned by tag | No hashes or image digests; the lock file states it is not an attestation |
 
 Gateway invariants are re-asserted in the hosted configuration (`test_hosted_*`): a scan ALLOW is not a release credential, release

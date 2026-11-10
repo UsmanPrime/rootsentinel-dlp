@@ -1,4 +1,4 @@
-# Cryptographic specification — v1
+# Cryptographic specification, version 1
 
 ## Public contract
 
@@ -23,12 +23,12 @@ into profile-defined blocks. This library does not provide snapshot isolation.
 | file_sha256 | 64 lowercase hex characters |
 | merkle_root | 64 lowercase hex characters |
 
-Registry asset IDs belong to the later persistence/API layer, not this deterministic
+Registry asset IDs belong to the persistence/API layer, not this deterministic
 core manifest. The same input has the same cryptographic result across registrations.
 
 ## Fingerprints and descriptors
 
-Whole-file digest: `SHA256(file_bytes)`. Matching key for a later detector:
+Whole-file digest: `SHA256(file_bytes)`. Matching key used by the detector in `backend/app/detection.py`:
 `(profile_id, chunk_length, SHA256(chunk_bytes))`. Do not use the Merkle leaf as the
 matching key because a leaf also commits to the protected file's chunk index.
 
@@ -60,8 +60,8 @@ this is not a Certificate Transparency protocol implementation.
 
 Empty file: zero chunks, file hash and root both
 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`.
-No empty-tree inclusion proof exists. Future registry policy will reject empty
-protected assets, while scanning an empty outbound file remains valid input.
+No empty-tree inclusion proof exists. The registry rejects empty protected assets
+(`EMPTY_PROTECTED_ASSET`, HTTP 422), while scanning an empty outbound file remains valid input.
 
 ## Proofs and trust
 
@@ -92,7 +92,7 @@ descriptor; whole-file verification covers all bytes.
 - A Merkle proof establishes ordered inclusion under a trusted root, not release
   permission or the secrecy of file content.
 - Fingerprints reveal equality and can support guesses of predictable content.
-- SHA-256 is unkeyed. Later session and audit secrets have separate lifecycles.
+- SHA-256 is unkeyed. Session tokens and audit keys are separate secrets with their own lifecycles.
 - No claim of FIPS validation is made merely because `hashlib` implements SHA-256.
 
 ## Fixed independent examples

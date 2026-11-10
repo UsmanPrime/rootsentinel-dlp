@@ -1,4 +1,4 @@
-# Phase 05 verification record — local staging gateway agent
+# Phase 05 verification record: local staging gateway agent
 
 Status: **local gates PASS on Windows, and hosted CI PASSES on the candidate head (run `42268818788`, 8 of 8 jobs, see Hosted CI below).**
 The first candidate run failed on a defect in a Linux-only test and was fixed; Python 3.12 on Windows was not run.
@@ -78,12 +78,12 @@ docs-only commit records these results; its own CI run is listed on the Actions 
 | # | Evidence (tests are in `agent/tests`; "real gateway" means the actual FastAPI application over a loopback socket) | Result |
 |---|---|---|
 | 1 | `test_c1_benign_file_is_delivered_byte_identical_and_staging_is_emptied` (real gateway); demo check 3 | PASS locally |
-| 2 | `test_c2_renamed_protected_copy_never_reaches_outbound_and_opens_a_high_incident`: outbound empty, quarantine report payload free, analyst sees a HIGH incident for that transfer, `POST /audit/verify` valid; demo checks 4–6 | PASS locally |
+| 2 | `test_c2_renamed_protected_copy_never_reaches_outbound_and_opens_a_high_incident`: outbound empty, quarantine report payload free, analyst sees a HIGH incident for that transfer, `POST /audit/verify` valid; demo checks 4 to 6 | PASS locally |
 | 3 | `test_c3_…` x7: aligned two-block copy and a single aligned block are blocked (default threshold 1024); sub-threshold tail, shifted, CRLF, UTF-16 and zipped copies are **delivered and asserted as known misses**; demo check 7 | PASS locally |
 | 4 | `test_c4_growing_file_is_not_submitted_until_it_is_stable`; demo check 8 (journal timestamp after the writer finished) | PASS locally |
 | 5 | `test_c5_unsafe_entries_…` (hardlink, directory with nested file, empty, 10 MiB + 1, Windows junction; symlink and FIFO on POSIX) plus `test_fsutil_cli.py`; zero transfers created; demo check 9 | PASS locally; the POSIX-only symlink and FIFO paths ran on hosted Linux (run `42268818788`) |
 | 6 | `test_pipeline_faults.py`: submit faults 401, 429 (rate and pending cap), 503 (capacity and database), 400 incomplete upload, dropped connection and timeout; backend down; 403 origin; wrong credentials and role; release 503/STALE/consumed-then-dropped/tampered/truncated; digest lie. Nothing delivered early, one idempotency key reused, no duplicate transfer on recovery. Real gateway: `test_c6_…` (revoked session, non-EMPLOYEE account, wrong origin) | PASS locally |
-| 7 | `test_c7_crash_neither_loses_nor_silently_duplicates` x6 crash points on the real gateway (`os._exit` in a subprocess, then restart): exactly one outbound copy, source kept until delivered, a spent release stays visible, audit chain verifies; demo checks 11–12 | PASS locally |
+| 7 | `test_c7_crash_neither_loses_nor_silently_duplicates` x6 crash points on the real gateway (`os._exit` in a subprocess, then restart): exactly one outbound copy, source kept until delivered, a spent release stays visible, audit chain verifies; demo checks 11 to 12 | PASS locally |
 | 8 | `test_c8_stale_decision_…` (registry and policy change) and `test_c8_a_file_allowed_a_moment_ago_is_blocked…`; demo check 10 | PASS locally |
 | 9 | `test_c9_kill_during_the_outbound_write_leaves_no_partial_visible_file`: nothing visible in outbound after the kill, leftover only in `state/tmp`, cleaned and delivered on restart | PASS locally |
 | 10 | `test_no_credentials_cookies_or_tokens_leak_…` (password, session cookie and CSRF searched in logs, journal, reports and names), `test_cli_has_no_password_option_and_rejects_abbreviations`, credentials file rules, `scripts/audit_publication.py` 0 findings | PASS locally |
@@ -113,7 +113,7 @@ same inode; junctions have the reparse attribute `0x400`; `os.fsync` works on fi
 ## Informal checks (not evidence)
 
 A throwaway smoke of the POSIX code paths was run once inside the Kali WSL2 distribution on its own Python 3.14.7 (outside the
-supported 3.12–3.13 range), using a copy of the agent in that distribution's temporary directory, later removed: descriptor-relative
+supported 3.12 to 3.13 range), using a copy of the agent in that distribution's temporary directory, later removed: descriptor-relative
 listing, symlink-swap rejection, no-overwrite rename, private-mode enforcement, credentials mode 0600, directory fsync, instance lock
 and an end-to-end deliver/quarantine all behaved as designed. This is only an early signal; hosted Linux CI is the proof.
 

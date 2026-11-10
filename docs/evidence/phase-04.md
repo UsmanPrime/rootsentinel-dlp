@@ -4,7 +4,7 @@ Status: **Local gates PASS. Hosted CI and publication are recorded separately af
 
 Baseline inspected: `46bbe4f143f05d8c066039c1212a7f4a1ceffc13`, branch `main`, existing
 origin `https://github.com/UsmanPrime/rootsentinel-dlp.git`. The starting tree was clean
-and synchronized. Phase 01–03 source, contracts, evidence and specifications were
+and synchronized. Phase 01 to 03 source, contracts, evidence and specifications were
 inspected before implementation. No cryptographic, authentication, detection,
 policy, release or audit algorithm was replaced.
 
@@ -137,7 +137,7 @@ evidence commit `2e4d521cdb3f96158ee68c39aceee7afc0e82680`.
 
 Procedure: `main` was force pushed once, with an exact lease on the old tip
 (`--force-with-lease=main:d24417a394337a6446c4b68b6cecd5805a3d5177`), and the `phase-04` tag was
-moved once with an exact lease on the old tag object. The Phase 01–03 commits, the `phase-01`,
+moved once with an exact lease on the old tag object. The Phase 01 to 03 commits, the `phase-01`,
 `phase-02` and `phase-03` tags and the `phase03-gateway-verification` branch were not touched.
 A bundle of all refs was taken locally before the rewrite and is not published. A fresh clone of
 the remote showed eight linear commits and no merge commits.

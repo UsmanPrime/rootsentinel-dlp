@@ -1,10 +1,14 @@
-# Local Phase 03 operation and future deployment boundary
+# Local operation and hosted deployment
 
-No public deployment has been performed. `public_demo` remains fail-closed for all `/api/v1`
-routes; the hosted presenter demo prepared in Phase 06A (see the hosted section below) is a separate, authenticated-only configuration. The authenticated local fixture-selection endpoint performs real processing;
+The gateway runs locally for development and the staging agent, and as a hosted presenter demo
+on Render with a Neon PostgreSQL database (see the hosted section below). The hosted demo is an
+authenticated-only configuration: there is no anonymous access. `public_demo` remains fail-closed
+for all `/api/v1` routes. The authenticated fixture-selection endpoint performs real processing;
 it is not anonymous demo isolation. No arbitrary forwarding URL exists. The local staging agent
 is a separate client process documented in [staging-spec.md](staging-spec.md), including its
 provisioning commands; it does not change this service's configuration.
+
+## Local operation
 
 Keep source in the confirmed project folder. Use the existing external Python environment
 and runtime configuration described in [developer guide](developer-guide.md). Keep database,
@@ -29,10 +33,10 @@ python -m uvicorn app.api:create_app --factory --host 127.0.0.1 --port 8000 --wo
 
 Run key init once, not on every restart. Bootstrap an account using the existing CLI's
 interactive password prompt; do not embed credentials in commands/history/Git. Use secure
-cookies and HTTPS in any future non-loopback environment. `.env.example` contains only
+cookies and HTTPS in any non-loopback environment. `.env.example` contains only
 configuration names, not operational secrets. Environment variables inject the private
-keyring location; the file supplies persistent key material. A future secret manager may
-mount the same private keyring contract without changing the HMAC format.
+keyring location; the file supplies persistent key material. The hosted demo receives the
+same keyring file as a platform secret file without any change to the HMAC format.
 
 Before upgrading an existing database, stop the API, securely back up the database and
 retain keys/checkpoints separately. Alembic 0002 adds six tables and immutable-history
@@ -51,11 +55,11 @@ invalid chain or unavailable checkpoint store prevents release; repair dependenc
 restart, inspect uncertain transfers, then request a fresh transfer as needed. Never edit
 BLOCK/ERROR/STALE states to ALLOWED. Server send completion is not recipient confirmation.
 
-Future public hosting requires durable database and snapshot storage, persistent secrets,
-independent checkpoint retention, TLS/proxy review, synthetic-only public accounts and
-resource limits. Free-tier disk resets can erase snapshots/checkpoints; do not represent
-such hosting as providing durable forensic evidence. Later WSL2 admission must use native
-Linux filesystem storage, not a OneDrive mount; it is not implemented by this phase.
+Free-tier hosting does not provide durable snapshot or checkpoint storage: disk resets erase
+them, so do not represent such hosting as durable forensic evidence. A production deployment
+would need durable database and snapshot storage, independent checkpoint retention and its own
+TLS and proxy review. Running the staging agent under WSL2 is optional; if used, keep its
+directories on the native Linux filesystem, not a OneDrive or `/mnt/c` mount.
 
 ## Hosted presenter demo (Phase 06A)
 
@@ -63,16 +67,18 @@ Phase 06A adds everything needed to run the gateway on a free host for a live, p
 https://rootsentinel-dlp.onrender.com; the measurements are in the [Phase 06A evidence](evidence/phase-06a.md). This section is the
 exact procedure, including the steps only you can do.
 It is a demonstration deployment: not production, not a durable evidence store, and **there is no anonymous or visitor access**
-(every `/api/v1` route except sign-in answers 401 without a session; the test suite iterates all routes to prove it).
+(every `/api/v1` route except sign-in and the session check answers 401 without a session; the session check answers 204; the test
+suite iterates all routes to prove it).
 
 ### Why `ROOTSENTINEL_MODE=local` over an https origin
 
-`mode` gates exactly four things in the code: the blanket `PUBLIC_DEMO_NOT_READY` denial in `RequestGuard`, the account CLI, the
-insecure-cookie exemption (loopback only), and two reporting fields (`/health`, `/overview`). A new "hosted" mode would have touched
-all four and the published OpenAPI. Instead the hosted app runs in `local` mode, which here means only "operational API enabled", and
-`Settings.hosted` is derived from an `https://` origin. Being hosted can only add protection: HSTS, a report-only CSP, and no
-interactive API documentation. `public_demo` is unchanged and still denies every API route (tested). The entrypoint refuses to start
-without an https origin or with insecure cookies.
+`mode` gates exactly five things in the code: the blanket `PUBLIC_DEMO_NOT_READY` denial in `RequestGuard`, the account CLI, the
+insecure-cookie exemption (loopback only), interactive API documentation (`create_app` in `backend/app/api.py`), and two reporting
+fields (`/health`, `/overview`). A new "hosted" mode would have touched all five and the published OpenAPI. Instead the hosted app
+runs in `local` mode, which here means only "operational API enabled", and `Settings.hosted` is derived from an `https://` origin.
+Being hosted can only add protection: HSTS and no interactive API documentation. The enforced Content-Security-Policy is the same
+locally and hosted. `public_demo` is unchanged and still denies every API route (tested). The entrypoint refuses to start without an
+https origin or with insecure cookies.
 
 ### What is in the image
 
@@ -82,6 +88,12 @@ Host checks are unchanged. The server runs as an unprivileged user (uid 10001). 
 root only to copy the two secret files to private 0600 paths, then migrates, runs `python -m app.bootstrap`, and starts the server.
 `render.yaml` is a Blueprint with no secret values.
 
+The runtime stage applies Debian security updates (`apt-get upgrade`) and removes `pip` after installing the locked requirements, so
+the image carries no Python package installer (and none of pip's vendored libraries). `.trivyignore` records three reviewed image-scan findings with their reasons (DS002 no `USER`
+instruction, DS031 a file path mistaken for a secret, DS026 no `HEALTHCHECK`). A local build measured 219216151 bytes (about
+219 MB) uncompressed; the CI `container` job measures the size on every build and fails above its 258 MiB budget
+(`IMAGE_SIZE_BUDGET_MIB`).
+
 | Variable | Meaning | Hosted value |
 |---|---|---|
 | `ROOTSENTINEL_MODE` | operational API enabled | `local` |
@@ -90,9 +102,11 @@ root only to copy the two secret files to private 0600 paths, then migrates, run
 | `ROOTSENTINEL_TRUSTED_PROXY_HOPS` | `X-Forwarded-For` entry taken N from the right; 0 ignores the header | `0` (hop counting did not work on Render, see the Phase 06A evidence) |
 | `ROOTSENTINEL_CLIENT_IP_HEADER` | one header holding exactly one client address, set by the edge (for example `True-Client-IP`); empty = off. Cannot be combined with nonzero hops (startup refuses) | **`True-Client-IP`**, set in the dashboard only (not in `render.yaml`). Adopted in Phase 06A after a two-network test; see the Phase 06A evidence |
 | `ROOTSENTINEL_EXTRA_HOSTS` | exact additional Host values (for example a custom domain), no wildcards | unset |
-| `ROOTSENTINEL_SESSION_SECONDS` / `RETENTION_SECONDS` | 60-86400 / 1-900 | 3600 / 900 |
-| `ROOTSENTINEL_MAX_UPLOAD_BYTES` | 1024-10485760 | 1048576 (1 MiB) |
-| `ROOTSENTINEL_TRANSFER_RATE_PER_MINUTE` | per account, 1-120 | 10 |
+| `ROOTSENTINEL_SESSION_SECONDS` | 60 to 86400 | 3600 |
+| `ROOTSENTINEL_RETENTION_SECONDS` | 1 to 900 | 900 |
+| `ROOTSENTINEL_MAX_UPLOAD_BYTES` | 1024 to 10485760 (default 10 MiB) | 1048576 (1 MiB) |
+| `ROOTSENTINEL_TRANSFER_RATE_PER_MINUTE` | per account, 1 to 120 (default 30) | 10 |
+| `ROOTSENTINEL_COMMIT` | Docker build argument: the commit `/health` reports. CI passes the Git SHA | not set on Render; the app falls back to Render's `RENDER_GIT_COMMIT` |
 
 The defaults of every new setting reproduce the earlier local behavior exactly. With hops greater than 0 the app trusts the
 `X-Forwarded-For` entry that many places from the right; this is only safe when the app is reachable exclusively through that many
@@ -107,13 +121,27 @@ header on every request that can reach the service. On Render, Cloudflare fronts
 because the shared `unidentified` bucket is limited too. Only a second network inside the same window tells them apart (procedure
 below).
 
-Every request without a valid header advances the counter behind the log line `client IP header missing or invalid; shared
-unidentified bucket used (N request(s) so far)`, logged at N = 1, 10, 100 and so on, starting again at 1 in each new process. That
-includes `/health` and Render's own health checks, so on Render this line appears in normal operation and does **not** mean that
-sign-ins lack the header. Phase 06A first misread it that way. Separating health checks from this counter is a 06B.1 item.
+Every non-health request without a valid header advances the counter behind the log line `client IP header missing or invalid;
+shared unidentified bucket used (N request(s) so far)`, logged at N = 1, 10, 100 and so on, starting again at 1 in each new process.
+Requests to `/health`, including Render's own health checks, are counted separately (`health_without_client`) and never advance
+it. The line therefore means that a real request reached the service without a valid header. Phase 06A, before this change, saw the
+line caused by health checks alone and first misread it.
 
 Cloudflare also refuses a client-set `CF-Connecting-IP` at the edge (403, Cloudflare error 1000), so `--spoof-mode
 cf-connecting-ip` and `all` need `--expect limited-or-rejected`.
+
+### Health, deployed commit and security headers
+
+`GET /health` returns `status`, `mode`, `release_configured`, `hosted`, `commit` and `max_upload_bytes`. `hosted` is `true` when
+the configured origin is https; the interface takes its "Hosted demo" or "Local" badge and its upload cap from this response.
+`commit` comes from `ROOTSENTINEL_COMMIT` (a Docker build argument; the CI `container` job builds with
+`--build-arg ROOTSENTINEL_COMMIT=$GITHUB_SHA`), else from Render's `RENDER_GIT_COMMIT`, else `unknown`. Only 7 to 40 lowercase hex
+characters are accepted; any other value is reported as `unknown` and never echoed.
+
+`scripts/smoke_public.py --expect-commit <sha>` fails unless `/health` reports that commit (full SHA or a prefix of at least 7
+characters). The smoke test also checks that the `Content-Security-Policy` header is enforced, not report-only, and has no
+`'unsafe-inline'`. Every response, locally and hosted, carries the same enforced policy; HSTS (`max-age=31536000`, no preload, no
+subdomains) is added only when hosted. See [frontend](frontend.md#content-security-policy) for the policy text.
 
 ### Secrets: files and hashes, never plaintext
 
@@ -161,8 +189,9 @@ The dashboards change; where this list and the vendor page disagree, the vendor 
 8. **Smoke test** from your machine (hidden password prompt; it signs in as the analyst):
    ```powershell
    Set-Location '<repository root>'
-   python -B scripts\smoke_public.py --base-url https://<name>.onrender.com --username presenter-analyst
+   python -B scripts\smoke_public.py --base-url https://<name>.onrender.com --username presenter-analyst --expect-commit <sha>
    ```
+   Replace `<sha>` with the commit you expect to be live (`git rev-parse HEAD` on `main`), or omit the option.
 9. **Measure and record** (see below), then put the real numbers in `docs/evidence`. Do not quote numbers you did not measure.
 10. **Course sheet.** Add the repository link and the hosted URL to the topic selection sheet yourself.
 
@@ -175,7 +204,10 @@ The dashboards change; where this list and the vendor page disagree, the vendor 
   separated), 14 to 17 s from the bootstrap result to `Started server process` (checkpoint anchoring and importing the app), 4 to
   5 s until uvicorn is ready, then 1 to 9 s of routing before the first 200.
 * **Memory.** The free instance has **512 MB and 0.15 CPU** (Render Metrics page, "Limit"). Memory and CPU usage are shown only on
-  paid compute plans, so peak memory on the free instance was not measured.
+  paid compute plans, so Phase 06A did not measure peak memory. The application now logs its own peak resident memory: logger
+  `rootsentinel.memory` writes `peak resident memory (VmHWM) at startup: N KiB (M MiB)` at INFO, and again every 10 minutes of
+  maintenance, wherever `/proc/self/status` exists (Linux, so in the container). Read it from the Render log; no hosted value is
+  recorded yet.
 * **Argon2 login time.** The smoke test prints the sign-in time. Record it (Phase 06A: 2.47 to 2.67 s live, 0.05 to 0.06 s in CI).
 * **Client identification.** Hop counts 1 and 2 did not work on Render. Adopted: `ROOTSENTINEL_CLIENT_IP_HEADER=True-Client-IP` with
   hops 0. Re-verify it with the procedure below after any change to the host, the edge or this setting. The probe uses up the login
@@ -195,14 +227,15 @@ Only fake user names are sent; no real password is used. Open `$U/health` first 
 
 **Why 55 s.** Each limiter window is fixed at 60 s from its first attempt. A takes about 38 s, and a shared bucket is empty again
 60 s after A_first, so a later B would pass even with a shared bucket. A per-client 429 still uses a global slot: A's 16 plus B's
-12 attempts make 28, under the global 30. The Render log line `unidentified` is **not** a criterion: health checks produce it.
+12 attempts make 28, under the global 30. The Render log line `unidentified` is **not** a criterion for this test.
 
 ### Deploy policy: main only, after checks, no pushes on demo day
 
 * **Deploy from `main`.** `render.yaml` sets `branch: main`. Candidate and feature branches are never deployed.
 * **Auto-deploy after checks.** `render.yaml` sets `autoDeployTrigger: checksPass`, which per Render's Blueprint specification
-  deploys a new commit on the linked branch only if that branch's CI checks pass. This is Render's behaviour as documented, not
-  something verified here until a real deploy exists. Render's older `autoDeploy` key is deprecated and is not used.
+  deploys a new commit on the linked branch only if that branch's CI checks pass. An auto-deploy has run (Phase 06A evidence); that
+  it waited for the checks is Render's documented behaviour, not something tested here. Render's older `autoDeploy` key is
+  deprecated and is not used.
 * **No pushes to `main` on demo day.** Every deploy restarts the service. A restart loses the audit checkpoints (they live on the
   container's ephemeral disk) and turns any in-flight transfer into `DELIVERY_UNKNOWN`, which must then be repeated. Merge and push
   well before the demo, wait for the deploy to finish, and run the smoke test afterwards.
@@ -237,8 +270,8 @@ would last only about 17 days at 0.25 CU if you kept the service awake all month
   alembic, bootstrap and uvicorn now run with `HOME=/nonexistent` (the unprivileged account's passwd home, which does not exist), so
   the path is simply absent; no other variable is changed and the privilege drop is unchanged. CI asserts this on every build (the
   server's `HOME`, and that `os.stat` of the expanded path raises `FileNotFoundError` rather than `PermissionError` as uid 10001).
-  **If you set a `HOME=/nonexistent` environment variable in the Render dashboard as a workaround, you can remove it once the
-  deploy containing this fix is live.** Removing it before then brings the error back.
+  The fix is live, and the temporary `HOME` variable once set in the Render dashboard as a workaround has been removed (Phase 06A
+  evidence).
 * **`Network is unreachable` lines with IPv6 addresses** while connecting to Neon. Render's free instances have no IPv6 egress, so
   the driver tries the IPv6 address, fails, and falls back to IPv4. These lines are harmless when the connection then succeeds.
 
@@ -251,6 +284,7 @@ redeploy. Neon's free plan keeps six hours of restore history; a restore also in
 ### Limitations
 
 Free tiers sleep (Render: after 15 minutes idle, about a minute to wake) and may restart at any time. Retained snapshots and
-checkpoints do not survive a restart. Fixed 1 KiB block matching limits still apply. The CSP is report-only until the deployed
-pages have been observed; four React style attributes need `style-src-attr 'unsafe-inline'`. Real uploads are limited to signed-in
-accounts, at most 1 MiB by default, and must be synthetic: the notice in the interface is a reminder, not a control.
+checkpoints do not survive a restart. Fixed 1 KiB block matching limits still apply: shifted, encoded, compressed or otherwise
+transformed content is missed. The Content-Security-Policy is enforced, but it cannot stop a malicious script that the build itself
+contains. Real uploads are limited to signed-in accounts, at most 1 MiB on the hosted demo, and must be synthetic: the notice in the
+interface is a reminder, not a control.

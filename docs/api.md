@@ -1,19 +1,21 @@
-# REST API — Phases 02 and 03
+# REST API
 
-Version prefix `/api/v1`; local same-origin cookie authentication. The application
-generates OpenAPI at `/openapi.json` and interactive documentation at `/docs`.
-The checked-in [OpenAPI snapshot](openapi.json) is generated from the application.
+Version prefix `/api/v1`; same-origin cookie authentication. In local mode over plain
+http the application also serves OpenAPI at `/openapi.json` and interactive documentation
+at `/docs`; a hosted (https origin) or `public_demo` deployment serves neither. The
+checked-in [OpenAPI snapshot](openapi.json) is generated from the application.
 
 All protected endpoints require `rs_session`. Mutations require an exact configured
 `Origin`; cookie-authenticated mutations additionally require `X-CSRF-Token`. Login
 returns user metadata and CSRF, with the opaque session in an HttpOnly cookie.
-`/auth/me` supports reload without storing tokens in localStorage.
+`/auth/session` and `/auth/me` support reload without storing tokens in localStorage.
 
 | Method / route | Role / behavior |
 |---|---|
-| POST `/auth/login` | Local-only JSON username/password; generic failures and throttling |
+| POST `/auth/login` | JSON username/password; generic failures and throttling |
 | POST `/auth/logout` | Authenticated; revoke current session; 204 |
-| GET `/auth/me` | User ID/username/role and current CSRF value |
+| GET `/auth/session` | Public session check: 200 with user and current CSRF value, or 204 when there is no valid session; never 401 |
+| GET `/auth/me` | User ID/username/role and current CSRF value; 401 when signed out |
 | GET `/assets` | ADMIN/ANALYST; `q`, `retired`, `offset`, `limit` filters |
 | POST `/assets?label=...` | ADMIN; raw bytes; new asset/version; 201 |
 | GET `/assets/{asset_id}` | ADMIN/ANALYST; display metadata and state |
@@ -30,7 +32,7 @@ returns user metadata and CSRF, with the opaque session in an HttpOnly cookie.
 | GET `/scans` | ADMIN/ANALYST all; EMPLOYEE own; paginated summaries |
 | GET `/scans/{scan_id}` | Object-authorized complete evidence |
 
-Pagination defaults to 25, permits 1–100 and offset 0–100,000. Version summaries
+Pagination defaults to 25, permits limit 1 to 100 and offset 0 to 100,000. Version summaries
 default to five with maximum ten. Sorts include stable IDs or unique version numbers.
 Resource path IDs are UUIDs. Integrity verification checks descriptor inclusion,
 not full-file verification; the caller cannot supply the trusted root.
@@ -42,11 +44,14 @@ limits. Supply `label`/`filename` as display metadata, never storage paths. Labe
 allow ASCII alphanumeric plus spaces, periods, underscores, parentheses and hyphens,
 beginning with an alphanumeric character, maximum 120. Filenames do not affect hashes.
 
-The server counts received bytes, accepts at most 10 MiB, and checks Content-Length
-only for consistency after intake. JSON bodies are limited to 32 KiB. Intake has a
-60-second limit. Private temporary bytes become one immutable memory buffer before
-evaluation, then the temporary handle is removed. Snapshot UUIDs are correlation IDs;
-there is no retrievable payload store.
+The server counts received bytes, accepts at most the upload cap
+(`ROOTSENTINEL_MAX_UPLOAD_BYTES`, default 10 MiB; `/health` reports it as
+`max_upload_bytes`), and checks Content-Length only for consistency after intake. JSON
+bodies are limited to 32 KiB. Intake has a 60-second limit. Private temporary bytes
+become one immutable memory buffer before evaluation, then the temporary handle is
+removed. For scans, snapshot UUIDs are correlation IDs and no payload is kept.
+Transfers keep a private retained snapshot until release, BLOCK or expiry
+([transfer specification](transfer-spec.md)).
 
 Extensions to the original route plan: version creation/list routes, raw rather than
 multipart bodies, and a registry-selected baseline for proof verification. The
@@ -68,12 +73,15 @@ Errors never echo input or stack traces:
 
 401 authentication; 403 role/CSRF/Origin/public-mode denial; 404 absent or hidden
 resource; 409 duplicate/stale/conflicting write; 413 byte limit; 415 wrong media
-type; 422 schema/empty protected registration; 429 login limit; 503 database,
-capacity or evaluation failure. Interrupted intake returns 400. None authorizes release.
+type; 422 schema/empty protected registration; 429 login limit
+(`LOGIN_RATE_LIMIT_ACCOUNT`, `LOGIN_RATE_LIMIT_CLIENT` or `LOGIN_RATE_LIMIT_GLOBAL`);
+503 database, capacity or evaluation failure. Interrupted intake returns 400, and a
+`Host` header outside the permitted list returns 400 `HOST_REJECTED`. None authorizes release.
 
-Default `public_demo` mode denies every operational `/api/v1` route with 403. There
-are no anonymous upload, forwarding or download endpoints. The browser workbench
-is local-only and never fabricates verdicts.
+Default `public_demo` mode denies every operational `/api/v1` route with 403
+`PUBLIC_DEMO_NOT_READY`. There are no anonymous upload, forwarding or download
+endpoints. The browser workspace needs `local` mode, which the hosted demo also uses
+behind its https origin, and never fabricates verdicts.
 
 References inspected: [FastAPI direct Request support](https://fastapi.tiangolo.com/advanced/using-request-directly/)
 and [Starlette streaming requests](https://starlette.dev/requests/). Direct Request
@@ -83,22 +91,22 @@ use requires the explicit validation, byte accounting and OpenAPI declarations h
 
 All routes retain `/api/v1`, existing cookie/Origin/CSRF checks and public-mode denial.
 Mutation requests require `X-CSRF-Token`; raw uploads use `application/octet-stream`.
-Transfer creation requires a UUID `Idempotency-Key`. Query pagination: limit 1?100,
-offset 0?100000. Errors retain the existing safe INDETERMINATE/release_authorized=false envelope.
+Transfer creation requires a UUID `Idempotency-Key`. Query pagination: limit 1 to 100,
+offset 0 to 100,000. Errors retain the existing safe INDETERMINATE/release_authorized=false envelope.
 
 | Method and route | Permission and behavior |
 |---|---|
-| POST /transfers?filename=candidate.bin | Authenticated local input; bounded intake, persisted evaluation; 201 |
+| POST /transfers?filename=... | Authenticated raw input; bounded intake, persisted evaluation; 201. The interface sends the chosen file name as a sanitized display label, falling back to `candidate.bin` |
 | POST /transfers/fixtures | Authenticated local `{fixture: benign or protected}`; same real gateway; 201 |
 | GET /transfers | Own transfers for EMPLOYEE, metadata across users for ADMIN/ANALYST |
 | GET /transfers/{id} | Same ownership rules; actual evidence/state and release eligibility |
 | POST /transfers/{id}/release | Owner only; single-use verified bytes; no administrator BLOCK bypass |
 | POST /transfers-maintenance/expire | ADMIN bounded expiry/cleanup |
-| GET /incidents | ADMIN/ANALYST; optional OPEN/INVESTIGATING/RESOLVED status filter |
+| GET /incidents | ADMIN/ANALYST; optional OPEN/INVESTIGATING/RESOLVED status, HIGH/MEDIUM severity and newest/oldest order |
 | GET /incidents/{id} | ADMIN/ANALYST real scan and bounded investigation history |
 | PATCH /incidents/{id} | ADMIN/ANALYST; expected_revision, status, note, resolution |
 | GET /exports/incidents/{id} | ADMIN/ANALYST sanitized JSON; audited export |
-| GET /audit/events | ADMIN/ANALYST; after sequence 0?20000 and limit 1?100 |
+| GET /audit/events | ADMIN/ANALYST; after sequence 0 to 20,000 and limit 1 to 100 |
 | POST /audit/verify | ADMIN/ANALYST; first-invalid-event result and checked head/checkpoint |
 | POST /audit/checkpoint | ADMIN; verify and retain independent signed head metadata |
 
@@ -109,7 +117,7 @@ fixture family and use the raw local upload route. No name creates an automatic 
 Release response is octet-stream with generated attachment name, no-store and nosniff.
 Denials contain JSON, never file bytes: 401 authentication, 403 role/CSRF/origin, 404 unknown
 or unowned object, 409 blocked/stale/consumed/conflict, 410 newly detected expiry, 413 size,
-422 invalid schemas/UUIDs, 429 rate/pending cap, 503 infrastructure/audit/integrity/capacity.
+422 invalid schemas/UUIDs, 429 `TRANSFER_RATE_LIMIT` or `PENDING_TRANSFER_CAPACITY`, 503 infrastructure/audit/integrity/capacity.
 A prior terminal EXPIRED record returns 409 on subsequent release attempts. See generated
 [OpenAPI](openapi.json) for precise schemas and [transfer contract](transfer-spec.md).
 
@@ -119,8 +127,25 @@ A prior terminal EXPIRED record returns 409 on subsequent release attempts. See 
   transfers and no registry/incident/audit totals. Seven UTC days include today.
 - `GET /api/v1/assets/{asset_id}/versions/{version_id}/tree?index=0&offset=0&limit=16`:
   ADMIN/ANALYST only. Returns registered manifest, real proof, server-computed tree
-  nodes and bounded chunk page. Limit 1?32; index 0?10239. Full tree at <=16 leaves,
+  nodes and bounded chunk page. Limit 1 to 32; index 0 to 10,239; offset 0 to 10,240. Full tree at <=16 leaves,
   selected proof path otherwise. No bytes or keys are returned.
 
 OpenAPI and generated frontend contracts are checked in. Run
 `python -B scripts/frontend_contracts.py --check` to detect type drift.
+
+## Health
+
+`GET /health` (outside `/api/v1`, no authentication) returns:
+
+| Field | Meaning |
+|---|---|
+| `status` | `ok` when the process answers |
+| `mode` | `local` or `public_demo` |
+| `release_configured` | `true` in local mode when an audit key file and a checkpoint root are configured |
+| `hosted` | `true` when the server's configured origin is https; the interface shows "Hosted demo" or "Local" from this field, never from the hostname |
+| `commit` | the deployed commit (7 to 40 lowercase hex characters) from `ROOTSENTINEL_COMMIT`, else `RENDER_GIT_COMMIT`, else `unknown` |
+| `max_upload_bytes` | the upload cap the interface enforces before sending |
+
+With `ROOTSENTINEL_CLIENT_IP_HEADER` set, a `/health` request without a valid header is
+counted separately and does not advance the `unidentified` client counter; health probes
+never reach the login limiter.

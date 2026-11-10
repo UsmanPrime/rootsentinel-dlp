@@ -50,7 +50,8 @@ else
 fi
 
 # One worker: the rate limiters, processing slots and audit ordering assume a single process.
-# --no-proxy-headers: client addresses come from ROOTSENTINEL_TRUSTED_PROXY_HOPS inside the app.
+# --no-proxy-headers: uvicorn never rewrites the client address; the app picks it (ROOTSENTINEL_CLIENT_IP_HEADER or
+# ROOTSENTINEL_TRUSTED_PROXY_HOPS, otherwise the socket peer).
 if [ "$(id -u)" = "0" ]; then
   exec setpriv --reuid=10001 --regid=10001 --clear-groups env HOME="$SERVER_HOME" python -m uvicorn app.api:create_app --factory \
     --host 0.0.0.0 --port "$PORT" --workers 1 --no-access-log --no-proxy-headers

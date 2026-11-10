@@ -30,8 +30,9 @@ of work performs role authorization, reads the policy from the database, and rec
 the single-workspace actor and file manifest with every evaluation.
 
 All successful evaluations, including ALLOW, have `release_authorized: false`.
-This is an evaluation API, not an authorization token for file delivery. Phase 03
-must reauthorize requests, verify the frozen bytes and current revisions, and enforce
-release independently. A database failure rolls back the evaluation; the API returns
-an explicit error, but cannot promise to persist that failure in an unavailable
-database. Authenticated audit integrity belongs to Phase 03.
+This is an evaluation API, not an authorization token for file delivery. Release
+reauthorizes the request, verifies the frozen bytes and current revisions, and is
+enforced separately ([transfer specification](transfer-spec.md)). A database failure
+rolls back the evaluation; the API returns an explicit error, but cannot promise to
+persist that failure in an unavailable database. Authenticated audit integrity is
+specified in the [audit specification](audit-spec.md).

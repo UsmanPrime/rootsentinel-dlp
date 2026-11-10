@@ -5,25 +5,30 @@
 Phase 03 adds retained private snapshots, single-use verified downloads, incident
 investigation, HMAC audit events and external checkpoints to the existing Phase 02
 registry/detection/policy/authentication services. Phase 05 adds the local staging agent,
-a separate client of that gateway ([staging-spec](staging-spec.md)); public deployment in
-the intended product diagram remains planned. Implemented contracts: [transfers](transfer-spec.md),
-[audit protocol](audit-spec.md), [local operation](deployment.md).
+a separate client of that gateway ([staging-spec](staging-spec.md)). Phase 06A deployed the same
+gateway on the Render free tier with a Neon PostgreSQL database as a hosted presenter demo; it has
+operator-provisioned accounts only and no anonymous access. Implemented contracts: [transfers](transfer-spec.md),
+[audit protocol](audit-spec.md), [local operation and hosted deployment](deployment.md).
 See [threat model](threat-model.md), [database](database.md), [detection](detection-spec.md),
 [policy](policy-spec.md), [authentication](authentication.md) and [API](api.md).
 
-## Intended architecture
+## Architecture
 
 React/TypeScript/Vite frontend; FastAPI/Pydantic modular backend; SQLite locally,
 PostgreSQL for hosting. One origin, one application worker, bounded concurrency.
 No Redis, Celery, microservices, arbitrary forwarding URLs or kernel agents.
-Tailwind is the application-phase styling target; the foundation shell uses small
-CSS token/component files and currently has no Tailwind dependency.
+Styling uses plain CSS files (`frontend/src/base.css`, `workspace.css` with the design
+tokens, `components.css`); there is no Tailwind dependency.
 
 ```mermaid
 flowchart LR
   subgraph Untrusted
     B[Browser]
     S[Staging producer]
+  end
+  subgraph Local host
+    T[Staging agent]
+    O[Agent outbound directory]
   end
   subgraph Trusted gateway
     A[Authentication and input limits]
@@ -34,11 +39,13 @@ flowchart LR
     L[Audit]
   end
   B -->|HTTPS| A
-  S -->|Linux admission adapter| A
+  S -->|Files in the staging directory| T
+  T -->|Staging agent REST client| A
   A --> Q --> D --> P --> G
   P --> L
   G -->|Only approved checked bytes| B
-  G -->|Verified snapshot| O[Gateway-owned local delivery]
+  G -->|Only approved checked bytes| T
+  T -->|Digest-verified write| O
   D --> R[(Fingerprint registry)]
   L --> DB[(Persistent metadata)]
 ```
@@ -80,7 +87,8 @@ blocking threshold. Empty protected-asset registration is rejected.
 Authentication, invalid input, stale state and infrastructure errors prevent release.
 No administrator override exists in P0. Policy changes create new versions; changed
 policy or registry revisions require rescan before release. Incident closure does
-not grant permission. Public visitors are currently denied API access. Synthetic-only public isolation is a later release gate.
+not grant permission. Anonymous visitors are denied API access. An anonymous visitor mode is an
+open decision and is not implemented; if it is added, it accepts synthetic fixture IDs only.
 
 ## Trust and residual risks
 
@@ -88,7 +96,7 @@ Trusted: backend, host OS, deployment administrators, authorized registry baseli
 Untrusted: browser input, filenames, staging producers, proof packages. Database
 tamper tests assume the attacker does not also possess audit integrity keys.
 
-| Threat | Planned mitigation | Residual risk |
+| Threat | Mitigation | Residual risk |
 |---|---|---|
 | Exact protected copy | SHA-256 match and withheld release | Other transfer channels remain available |
 | Edits/partial copying | Fixed block matching | Shifts, tiny snippets and transformations can evade |
@@ -96,7 +104,7 @@ tamper tests assume the attacker does not also possess audit integrity keys.
 | Object-ID guessing | Server-side ownership/role checks | Authorized analysts can inspect evidence |
 | Malicious paths | Generated snapshot IDs; agent admission is no-follow (descriptor-relative on POSIX, `lstat` plus identity checks on Windows) | Host compromise excluded; Windows keeps a small check-to-use window |
 | Source mutation | Scan frozen snapshot; release same checked buffer | Original producer state may be unstable |
-| Resource exhaustion | 10 MiB local/1 MiB public limits; two processing slots | Distributed DoS outside project guarantee |
+| Resource exhaustion | Upload cap `ROOTSENTINEL_MAX_UPLOAD_BYTES` (default 10 MiB, 1 MiB on the hosted demo); two processing slots | Distributed DoS outside project guarantee |
 | Proof substitution | Independently trusted expected manifest | Registry authority compromise defeats trust |
 | Audit edits | HMAC-SHA-256 chain and external checkpoints | Key compromise; uncheckpointed tail truncation |
 | Logs expose source/secrets | Allowlisted metadata and redaction tests | Infrastructure logs need separate review |

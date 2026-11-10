@@ -1,4 +1,4 @@
-# Authenticated audit protocol — version 1
+# Authenticated audit protocol, version 1
 
 File fingerprints remain unkeyed SHA-256. Audit integrity is a separate keyed mechanism
 implemented with Python `hmac.digest(..., 'sha256')` and `hmac.compare_digest`, using the
@@ -41,8 +41,9 @@ P0. Reaching the cap fails closed; an archival/stream rollover design is future 
 HTTP asset registration/version/retirement and policy mutations append audit records
 in their existing transactions. Transfers append submission, completed scan, decision,
 failure/expiry, release attempt/denial/start and completion/uncertainty. Incidents append
-creation/update; exports and successful verification actions are recorded. Registry
-bootstrap/internal unit-of-work calls do not automatically manufacture historical events.
+creation/update; exports and successful verification actions are recorded. Internal
+registry unit-of-work calls do not manufacture historical events. The hosted `bootstrap`
+command seeds its synthetic asset through the normal path and appends `ASSET_REGISTERED`.
 Pre-Phase-03 records are explicitly outside this chain.
 
 Authorized release denials are audited once ownership and chain integrity are known.
@@ -89,8 +90,9 @@ Local separation protects against database-only replacement, not application-hos
 Not protected: key holders, host administrators, uncheckpointed tail deletion when the
 attacker also rewrites the head, or simultaneous compromise/removal of the database and
 trusted checkpoints. An empty checkpoint directory cannot prove that no older checkpoint
-ever existed. Future cloud hosting needs durable independently controlled checkpoint
-storage and secret injection; ephemeral free-tier filesystems do not satisfy this contract.
+ever existed. The hosted demo writes checkpoints to the container's ephemeral disk, so they
+are lost on every restart; it does not satisfy this contract. Durable, independently
+controlled checkpoint storage would be needed ([deployment](deployment.md)).
 
 Tests include an independent HMAC reference construction, content/sequence/link/MAC/key/
 encoding tampering, middle deletion, reorder, missing keys, rotation, concurrent appends,

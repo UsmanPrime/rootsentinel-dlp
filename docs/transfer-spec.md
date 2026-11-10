@@ -1,9 +1,9 @@
-# Controlled transfer protocol — version 1
+# Controlled transfer protocol, version 1
 
 Phase 03 implements a local authenticated download gateway, not operating-system,
 network, USB, clipboard or email interception. An application outside this gateway
 can still transfer files. The staging agent (Phase 05, [staging-spec](staging-spec.md)) is a separate client of
-this protocol and adds no new release path; public deployment remains future work.
+this protocol and adds no new release path. The hosted demo ([deployment](deployment.md)) runs the same gateway.
 
 ## Integration and trust boundaries
 
@@ -22,7 +22,8 @@ PostgreSQL takes a row lock. Each unit of work uses a separate SQLAlchemy sessio
 ## Snapshot and resource limits
 
 Raw authenticated uploads pass through the existing streaming intake: actual received
-bytes, not Content-Length, determine the 10 MiB limit; inconsistent supplied lengths
+bytes, not Content-Length, determine the upload cap (`ROOTSENTINEL_MAX_UPLOAD_BYTES`, default
+10 MiB, 1 MiB on the hosted demo); inconsistent supplied lengths
 and disconnects fail. Intake lasts at most 60 seconds. Payloads are never executed,
 decompressed, decoded or treated as safe because of their extension.
 
@@ -37,12 +38,13 @@ admission adapter. Host administrators and the application account can access pl
 
 Two shared processing slots cover intake, evaluation and verified response delivery.
 A release retains its slot until send completion, disconnect, exception or a 60-second
-send timeout. At most two 10 MiB delivery buffers exist per supported single worker;
+send timeout. At most two delivery buffers of up to the upload cap exist per supported single worker;
 Python/ASGI, hashing descriptors, intake copies and interpreter memory add overhead.
-This is a bounded payload budget, **not a 20 MiB process-RSS guarantee**. The detector's
+This is a bounded payload budget, **not a process-RSS guarantee**. The detector's
 existing version/reference caps still apply. Pending transfers are limited to ten per
-account and twenty globally (up to 200 MiB retained payload). Creation/release attempts
-share 30/account/minute and 120/global/minute fixed windows. Restart resets rate buckets.
+account and twenty globally (retained payload up to 20 times the upload cap). Creation and
+release attempts share fixed one-minute windows: `ROOTSENTINEL_TRANSFER_RATE_PER_MINUTE` per
+account (default 30, 10 on the hosted demo) and 120 globally. Restart resets rate buckets.
 One API worker is required; multiplying workers invalidates the process resource budget.
 
 ## State machine
@@ -80,11 +82,11 @@ release-attempt constraint and serialized state transition enforce single use.
 2. Acquire a processing slot and the registry lock. Check ownership and revalidate
    session revocation/expiry and enabled user inside the transaction.
 3. Verify the complete bounded HMAC stream and independent retained checkpoint.
-4. Require ALLOWED, an unexpired 15-minute window, persisted scan ALLOW, and exactly
+4. Require ALLOWED, an unexpired retention window (`ROOTSENTINEL_RETENTION_SECONDS`, at most 900 seconds), persisted scan ALLOW, and exactly
    matching current registry revision and policy version.
 5. Require the verified DECISION_ALLOWED audit event to bind actor, scan, policy,
    registry revision, digest, length and expiry to the transfer metadata.
-6. Open the private generated snapshot safely and capture at most 10 MiB into immutable
+6. Open the private generated snapshot safely and capture at most the upload cap into immutable
    bytes. Compare SHA-256 and length with both transfer metadata and scan manifest.
 7. Persist RELEASE_STARTED, unique attempt and mandatory audit event; commit.
 8. Remove retained snapshot content and retain an independently stored checkpoint
@@ -110,7 +112,8 @@ A retry always needs a new transfer and current evaluation. See the
 ## Retention and recovery
 
 Blocked/failed content is removed promptly after durable decision recording. On startup,
-bounded recovery marks SCANNING as ERROR and RELEASE_STARTED as DELIVERY_UNKNOWN.
+when an audit key file and a checkpoint root are configured, bounded recovery marks SCANNING
+as ERROR and RELEASE_STARTED as DELIVERY_UNKNOWN.
 Every minute, bounded maintenance expires ALLOWED snapshots and deletes terminal/orphan
 UUID snapshots. Orphans must be older than 900 seconds; unrelated filenames are ignored.
 An administrator may invoke `/transfers-maintenance/expire`. Each pass handles at most

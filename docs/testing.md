@@ -1,189 +1,230 @@
 # Testing and evaluation
 
-## Phase 01 commands
+This document lists the tests by level, says what each level proves and where it runs, and
+states what is not tested. Run results are recorded in the evidence files
+([evidence index](evidence/README.md)), not here.
 
-From `backend`: `python -B -m unittest tests.test_crypto tests.test_config -v` (no dependencies).
-After installing the pinned test environment: `python -m pytest` (all phases).
-From repository root: `python -B scripts/fixtures.py`.
-From `frontend`: `npm ci --ignore-scripts --no-audit --no-fund`,
-`npm run typecheck`, `npm run build`.
+## 1. CI jobs
 
-The test suite uses unittest cases discovered by both runners. It checks standard
-SHA-256 vectors; exact chunk boundaries; short reads; raw encoding; independent
-descriptor bytes and three-leaf tree expectations; every leaf for specified and
-additional deterministic tree sizes; malformed proofs; empty trees; maximum/oversize
-inputs; file mutations; ordering; and safe external path configuration.
+`.github/workflows/ci.yml` runs on every push and pull request. Actions are pinned to commit SHAs,
+checkout uses `persist-credentials: false`, and the workflow token is read-only. The nine jobs are the
+required checks on `main`.
 
-`scripts/fixtures.py` constructs only synthetic bytes in memory. Its default mode
-checks `fixtures/manifest.json`. `--write-manifest` deliberately updates the manifest
-but never writes payload files. Do not use that flag to hide unexplained test drift.
+| Job | Runs |
+|---|---|
+| `backend (3.12)`, `backend (3.13)` | `pytest` in `backend` (SQLite), `scripts/fixtures.py`, `scripts/frontend_contracts.py --check`, `git diff --exit-code` |
+| `browser` | Builds the interface, serves it from the API (`tests.browser_server`), runs `scripts/browser_phase04.py` and `scripts/browser_phase04_negative.py`; uploads only the two sanitized JSON reports |
+| `postgres` | The same backend `pytest` suite against a disposable PostgreSQL 17 service, `git diff --exit-code` |
+| `frontend` | `npm ci`, `npm run typecheck`, `npm run format:check` (Prettier), `npm test` (Vitest), `npm run build`, `git diff --exit-code` |
+| `agent (3.12)`, `agent (3.13)` | `scripts/source_corpus.py`, agent `pytest`, `scripts/demo_agent.py`, `scripts/audit_publication.py`, `git diff --exit-code` |
+| `agent-windows` | `scripts/source_corpus.py`, agent `pytest` and `scripts/demo_agent.py` on Windows |
+| `container` | Builds the hosted image with `--build-arg ROOTSENTINEL_COMMIT=$GITHUB_SHA`, checks its size budget, startup refusal, smoke test with `--expect-commit`, unprivileged uid, server `HOME`, and restart idempotence |
 
-## Phase 02 release checks
+## 2. Unit and cryptographic tests
 
-From the source root, using the isolated locked environment:
+From `backend`, without any dependency: `python -B -m unittest tests.test_crypto tests.test_config -v`.
+With the pinned test environment: `python -m pytest` runs every backend test.
 
-```sh
-python -B scripts/verify_phase02.py
-python -B scripts/export_openapi.py
-python -B scripts/audit_publication.py
-python -B scripts/benchmark_phase02.py --output docs/evidence/phase-02-benchmark.json
-```
+`test_crypto.py` checks standard SHA-256 vectors, exact chunk boundaries, short reads, raw encoding,
+independent descriptor bytes and three-leaf tree expectations, every leaf for specified and additional
+deterministic tree sizes, malformed proofs, empty trees, maximum and oversize inputs, file mutations and
+ordering. `test_config.py` checks safe external path configuration.
 
-Verification records actual sanitized command output in `phase-02-checks.json`.
-The benchmark uses temporary external SQLite data, deterministic blocks, three
-matching measurements and 100 policy/exact-lookup measurements. Its traced Python
-allocation peak is not process RSS. Database file size is cumulative metadata
-storage, not a proprietary-payload store. Shared-host load and tracing affect timings.
+From the repository root, `python -B scripts/fixtures.py` rebuilds the synthetic fixtures in memory and
+checks `fixtures/manifest.json`. `--write-manifest` deliberately updates the manifest but never writes
+payload files; do not use it to hide unexplained drift. `python -B scripts/frontend_contracts.py --check`
+fails when `frontend/src/lib/contracts.ts` no longer matches `docs/openapi.json`.
 
-The new pytest tests cover fixed-chunk fixtures and known misses, policy precedence,
-strict thresholds, lifecycle/history, authorization/ownership, CSRF/Origin/Host,
-session expiry/revocation/rotation, login limits, frozen intake, actual-byte size
-enforcement, interrupted ASGI requests, malformed filenames, public-mode denial,
-database rollback, immutable-row triggers, concurrent registrations/scans and query
-count bounds. Every test database is created by the actual Alembic migration.
+## 3. API and integration tests
 
-Set `ROOTSENTINEL_TEST_POSTGRES_URL` to a private, dedicated test DSN to run the same
-system fixtures on both engines. It creates/drops isolated random test schemas.
-Without that setting, a passing run proves SQLite behavior only. CI includes a
-disposable PostgreSQL service; observed CI results belong in evidence, not assumptions.
+Every test database is created by the real Alembic migration. By default the suite runs on SQLite. Set
+`ROOTSENTINEL_TEST_POSTGRES_URL` to a private, dedicated test DSN to run the same system fixtures on
+PostgreSQL as well; the fixture creates and drops random test schemas. A passing SQLite run proves SQLite
+behavior only; the `postgres` CI job covers PostgreSQL.
 
-The test client currently emits one upstream deprecation warning for HTTPX; the
-pinned API remains operational. No warning is suppressed to hide a test failure.
+| File (`backend/tests`) | Covers |
+|---|---|
+| `test_api_security.py` | Complete API journey, anonymous denial, role restrictions, object access, session hashing/expiry/revocation/rotation, CSRF/Origin/Host, login throttling, filename and label injection, upload limits and cleanup, frozen bytes, infrastructure failure never allows, `public_demo` denial, OpenAPI release contract |
+| `test_additional_gates.py` | Concurrent scans, immutable historical rows, incomplete Content-Length, actual-byte counting, ASGI disconnects, sanitized unexpected errors, no content in logs, missing registry fails closed, no combining of assets, cookie settings, snapshot links, disabled users |
+| `test_detection_policy.py` | Fixture evaluation matrix, size boundaries, empty registration rejected, one-byte change, documented transform misses, repetition and shared assets, versions and retirement, policy threshold and disable, invalid thresholds, query count and evidence cap |
+| `test_database.py` | Migration indexes and constraints, immutability triggers and foreign keys, rollback, concurrent registration |
+| `test_gateway.py` | Single-use verified download and checkpoint, BLOCK with zero content, preflight fail-closed, ownership, unsafe filenames, idempotency, missing key and audit failure, concurrent release, expiry and restart, incident conflicts, buffer survives snapshot change after capture, rate and capacity bounds, disconnect and send failure (`DELIVERY_UNKNOWN`), tampered audit, private snapshot permissions, no payload in logs |
+| `test_gateway_edges.py` | Upload cap boundaries, a lying Content-Length, empty file, safe and refused names, exact content type, release replay, release after expiry, policy and registry staleness, repeated BLOCK release, a 12-way parallel release race that delivers once, edited stored audit event, deleted newest event against the checkpoint, tampered and corrupt checkpoint files |
+| `test_authorization_matrix.py` | Every OpenAPI operation against anonymous, EMPLOYEE, ANALYST and ADMIN; every mutation without CSRF, from another Origin, and every operation with a foreign Host; cross-employee isolation; `/auth/session` 204 and never 401; session fixation; logout; expiry; hosted cookie flags; concurrent sessions |
+| `test_audit.py` | Independent HMAC reference, tamper attacks, uncheckpointed tail limitation, key rotation, concurrent appends, checkpoint detection of a rewritten head, log injection, private-file link checks |
+| `test_presentation.py` | Tree projection bounds and uneven topology, overview roles, tree route trusted-root proof and authorization, incident filter and sort |
+| `test_hosted.py` | Hosted settings, static serving and traversal, enforced CSP with HSTS only when hosted, every anonymous route denied, `public_demo` still closed, hop-count client address, upload/session/retention/rate overrides, `bootstrap`, and the gateway invariants in the hosted configuration |
+| `test_client_ip.py` | `ROOTSENTINEL_CLIENT_IP_HEADER`: one valid address only, forged `X-Forwarded-For` ignored, shared `unidentified` bucket, startup refusal with hops, stable 429 codes, health probes counted separately |
+| `test_operations.py` | `/health` fields (`hosted`, `commit`, `max_upload_bytes`), commit validation and fallback order, peak-memory (`VmHWM`) reading and logging |
+| `test_operator_tools.py` | `app.cli` account commands and `app.audit_keys` provisioning: hidden prompts, no secret output, no overwrite, rotation |
+| `test_smoke_probe.py` | The login-throttle probe in `scripts/smoke_public.py` with mocked responses |
 
-### Browser verification
-
-Install optional `backend/requirements-browser.lock`; use an installed Chrome. Set
-`ROOTSENTINEL_BROWSER_STATE` to a new, absolute directory outside source/OneDrive.
-In `backend`, run `python -B -m tests.browser_server`; start Vite with a matching
-`ROOTSENTINEL_ORIGIN` (and proxy port if changed). From root run
-`python -B scripts/browser_check.py` with the same state/origin variables.
-
-The harness creates random, temporary local credentials without printing them.
-The browser script reads them privately, exercises actual login/registration/scans/
-logout and writes only non-sensitive assertions to `phase-02-browser.json`. Stop
-the harness gracefully to remove credentials and its temporary database. If killed
-abruptly, remove only that known test directory after verifying the harness stopped.
-Do not publish raw browser traces, HARs or snapshots containing form values.
+Controlled thread barriers prove that policy and registry changes wait for release acquisition. ASGI
+send-failure and disconnect probes verify `DELIVERY_UNKNOWN`; they do not infer recipient receipt. An
+explicit audit test demonstrates the uncheckpointed tail limitation. Linux CI exercises POSIX symlinks and
+modes; Windows runs additionally exercise DACL validation. A Windows account without symlink creation
+privilege cannot prove native symlink coverage locally.
 
 API-only callers must supply Origin and the CSRF token as well as a session cookie.
-For a classroom demonstration, use the normal hidden-prompt bootstrap documented in
-the developer guide rather than the automated browser-test credential file.
 
-## Required later security scenarios
+## 4. Frontend tests
 
-Each result must record objective, fixture, expected decision, observed decision,
-evidence, limitation, test command, commit/environment and actual pass/fail.
+From `frontend`: `npm test`, `npm run typecheck`, `npm run format:check` and `npm run build`.
 
-| Scenario | Expected baseline behavior |
+| File | Covers |
 |---|---|
-| Exact and renamed protected file | BLOCK; release returns no payload |
-| Ordinary distinct file | ALLOW; returned bytes have scanned digest |
-| Empty file | Scan valid; protected registration rejected |
-| Small/large files | Exact matching remains correct within 10 MiB bound |
-| Single-byte change in multiblock file | Remaining aligned qualifying blocks trigger BLOCK |
-| Aligned partial copy / embedding | BLOCK at configured threshold |
-| One-byte boundary shift | Document expected fixed-block miss, not fake prevention |
-| Encoding and line endings | Raw-byte differences; report lost matches honestly |
-| Shared content | All implicated assets shown; no unique-ownership inference |
-| Valid/corrupt proofs | Success/failure against separately trusted manifest |
-| Concurrency | Isolated decisions; overload rejected; no duplicate delivery |
-| Interrupted/oversized uploads | No release; cleanup; 413 for excess bytes |
-| Malformed names, symlinks, traversal | Reject unsafe admission; no escaped file access |
-| Policy precedence/admin override | Exact block wins; no privileged P0 bypass |
-| Unauthorized/API cross-session access | Denied without evidence disclosure |
-| Audit edits/reordering | Verification fails without attacker knowing audit key |
-| Audit tail deletion | Detected against retained checkpoint; state residual limitation |
-| TOCTOU mutation | Only frozen checked bytes can be delivered |
-| Agent/network disconnection | No delivery on unknown decision; idempotent retry |
-| Outside-gateway copy | Explicitly not prevented; do not invent a gateway event |
-| Stale registry/policy | Rescan or deny before release |
+| `src/api.test.ts` | Same-origin cookies, CSRF only in the header, 401 handling, empty logout, fixture byte identity |
+| `src/lib/hooks.test.tsx` | Same-tick double-submission guard, safe error state and intentional retry |
+| `src/lib/quality.test.tsx` | Hosted badge from `/health` and never from the hostname, label sanitizer, verdict numbers, incident sorting |
+| `src/features/integrity/Integrity.test.tsx` | Tampered copies leave the stored proof unchanged, uneven topology, keyboard leaf selection, empty tree |
+| `src/features/transfers/Gateway.test.ts` | Independent hashing of downloaded bytes before saving |
 
-No transfer, policy, auth, agent or audit test is claimed as passed in Phase 01.
+## 5. Browser acceptance
 
-## Benchmark protocol (later phase)
+`scripts/browser_phase04.py` and `scripts/browser_phase04_negative.py` drive a real Chromium against the
+built interface served by the API (`backend/tests/browser_server.py` with `ROOTSENTINEL_FRONTEND_DIR`), on a
+disposable SQLite database with random credentials that are never printed. They run in the `browser` CI job.
 
-Use synthetic files of 0 B, 100 B, 1 KiB, 8 KiB, 1 MiB and 10 MiB. Compare fixed
-chunk sizes 256 B, 1 KiB, 4 KiB offline without changing the product's v1 profile.
-Perform five warm-ups and thirty measured repetitions; retain raw results,
-environment and commit. Report median/p95/range, throughput, peak memory, fingerprint
-storage, proof size and proof verification time. Separate cold public starts.
+* `browser_phase04.py` asserts that the served page carries the enforced CSP (`default-src 'none'`, no
+  `'unsafe-inline'`, no report-only header). It signs in for each role, registers and verifies proofs, checks
+  BLOCK with a forged release denied, clicks "Verified download" then "Download once" and compares the saved
+  bytes, exports evidence, verifies the audit chain, checks stale release, 48 route and viewport overflow
+  checks (8 routes at 320, 375, 768, 1024, 1440 and 1920 px), mobile navigation, RBAC through the interface and
+  the API, and session revocation. It injects axe with `page.evaluate` (the page's CSP does not govern that
+  channel) and fails on any violation of the axe rules tagged `wcag2a`, `wcag2aa`, `wcag21aa` and `wcag22aa`. It fails on any CSP violation and on any console
+  error other than Chrome's "Failed to load resource" lines for HTTP error statuses the negative checks cause
+  on purpose.
+* `browser_phase04_negative.py` covers expired transfers, CSRF rejection, offline error and recovery,
+  same-tick duplicate submission, session expiry, a tampered audit chain, and a mandatory audit failure that
+  prevents release. It fails on any CSP violation. `browser_phase04_faults.py` is its helper and only touches
+  the disposable browser database.
 
-Measure precision/recall/FPR against labelled ground truth. Use N/A for zero
-denominators. Separate detector recall from correct enforcement of its decision:
-a correctly enforced ALLOW may still be a false negative. CDC comparisons require
-a real validated implementation; no placeholder results. A two-second warm local
-1 MiB target is unmeasured, not an achieved benchmark.
+Both write their reports and screenshots to `$ROOTSENTINEL_BROWSER_EVIDENCE` (default
+`<ROOTSENTINEL_BROWSER_STATE>/evidence`), never into `docs/evidence`. Do not publish raw traces, HARs or
+snapshots containing form values. axe results are automated checks, not a full accessibility audit.
 
-## Phase 03 gates
+Local run (Windows PowerShell, repository root, browser lock installed with
+`pip install -r backend/requirements-browser.lock`, then `python -m playwright install chromium`):
 
-Run `python -B scripts/verify_phase03.py`, `python -B scripts/export_openapi.py`,
-`python -B scripts/audit_publication.py`, and `python -B scripts/benchmark_phase03.py`.
-Start the existing external `tests.browser_server` harness plus Vite, then run
-`python -B scripts/browser_phase03.py`. Browser tests independently hash the actual saved
-HTTP response, forge a release for BLOCK, resolve/export incidents and verify the HMAC chain.
+```powershell
+$env:ROOTSENTINEL_FRONTEND_DIST = Join-Path $env:LOCALAPPDATA 'RootSentinel\ui-build'
+Push-Location frontend; npm.cmd run build; Pop-Location
+$env:ROOTSENTINEL_BROWSER_STATE = Join-Path $env:LOCALAPPDATA ('RootSentinel\browser-' + (Get-Date -Format yyyyMMddHHmmss))
+$env:ROOTSENTINEL_FRONTEND_DIR = $env:ROOTSENTINEL_FRONTEND_DIST
+$env:ROOTSENTINEL_ORIGIN = 'http://127.0.0.1:5173'
+$env:ROOTSENTINEL_API_PORT = '5173'
+$env:ROOTSENTINEL_BROWSER_CHANNEL = ''
+Push-Location backend; python -B -m tests.browser_server
+```
 
-`test_gateway.py` covers positive/zero-content-negative HTTP paths, ownership, CSRF, public
-mode, stale registry/policy, expiry, missing/modified snapshot, persisted digest/length
-corruption, single use, concurrent release and idempotency, pending/rate caps, database and
-mandatory audit/checkpoint failures, snapshot disappearance, immutable-buffer mutation,
-recovery, incident permissions/version conflicts and malformed IDs/filenames. Controlled
-thread barriers prove policy/registry changes wait for release acquisition. ASGI send-failure
-and disconnect probes verify DELIVERY_UNKNOWN semantics; they do not infer recipient receipt.
+The state directory must be new and outside the source tree and OneDrive. In a second terminal with the same
+`ROOTSENTINEL_BROWSER_STATE`, `ROOTSENTINEL_ORIGIN` and `ROOTSENTINEL_BROWSER_CHANNEL`, run
+`python -B scripts/browser_phase04.py`, then `python -B scripts/browser_phase04_negative.py`. An empty channel
+uses Playwright's Chromium; leaving the variable unset uses installed Chrome. Stop the server with Ctrl+C,
+which removes its credential file; never point it at an operator database. For a classroom demonstration,
+use the normal hidden-prompt account setup from the [developer guide](developer-guide.md), not the browser
+test credentials.
 
-`test_audit.py` uses an independent HMAC reference, mutation/reorder/deletion/canonical/key
-faults, immutable triggers, concurrent append ordering, rotation and externally anchored
-tail truncation. An explicit test demonstrates the uncheckpointed tail limitation.
-Existing cryptographic tests and 606 subtests remain unchanged. The sole replaced Phase 02
-contract assertion is ?no release API exists?; it now permits exactly the controlled route.
+`scripts/browser_check.py` and `scripts/browser_phase03.py` have been removed.
 
-All database-dependent tests share the SQLite/PostgreSQL fixture. Set the dedicated test
-DSN or observe candidate CI; do not claim PostgreSQL from SQLite alone. Linux CI exercises
-POSIX symlinks/modes; Windows runs additionally exercise DACL validation. A Windows account
-without symlink creation privilege cannot prove native symlink creation coverage locally.
+## 6. Staging agent
 
-## Phase 04 frontend verification
+From `agent`: `python -m pytest -p no:cacheprovider` (ideally with `--basetemp` outside OneDrive). Levels:
+unit tests (`test_labels_journal_admission.py`, `test_fsutil_cli.py`), fault injection against a stateful fake
+gateway (`test_pipeline_faults.py`: 401, 403, 429, 503, timeouts, dropped connections, tampered and truncated
+release bodies), the ADMIN register tool against a scripted client (`test_register_tool.py`), and real-gateway
+tests (`test_gateway_integration.py`, `test_cli_ready_register.py`) that start the actual FastAPI application
+over a real loopback socket with Secure cookies. The real-gateway fixture bypasses only the login throttle and
+the transfer-call counter, in the test process, so a whole suite from one address does not trip them; the
+fake gateway covers throttle behavior. Crash tests run the agent in a subprocess, end it with `os._exit` at
+named failpoints, then restart it.
 
-Run `npm test`, `npm run typecheck` and `npm run build` from frontend. Unit tests
-cover isolated HTTP/CSRF/error behavior, same-tick mutation guards, tree projection
-rendering and independent downloaded-byte hashing. For real browser acceptance,
-start `python -B -m tests.browser_server` from backend with a NEW external
-`ROOTSENTINEL_BROWSER_STATE`, loopback `ROOTSENTINEL_ORIGIN`, and
-`ROOTSENTINEL_API_PORT`. Start Vite on the same configured origin with that API port.
-Then run `python -B scripts/browser_phase04.py` using the existing pinned Python
-Playwright environment and Chrome. Credentials are read only from the external
-harness file; screenshots contain synthetic records only. Never point the harness
-at an operator database. The report records actual axe results, keyboard checks,
-48 route/viewport checks, downloaded-byte equality and observed timings.
+`python -B scripts/demo_agent.py [--evidence PATH]` starts a disposable gateway (temporary runtime,
+generated key and credentials, synthetic corpus), runs the agent through 13 end-to-end checks, and removes
+everything. `python -B scripts/source_corpus.py` checks the synthetic corpus manifest. See
+[staging-spec](staging-spec.md).
 
-## Phase 05 staging agent verification
+## 7. Container and hosted checks
 
-The agent is tested at three levels from the `agent` directory (`python -m pytest -p no:cacheprovider`, ideally with
-`--basetemp` outside OneDrive): unit tests (labels, journal, admission, path rules), fault injection against a stateful
-fake gateway (401, 403, 429, 503, timeouts, dropped connections, tampered and truncated release bodies), and
-real-gateway tests that start the actual FastAPI application in a thread over a real loopback socket with default
-Secure cookies. The real-gateway fixture bypasses only the login throttle and the transfer-call counter, in the test
-process, so a whole suite from one address does not trip them; throttle behavior is covered by the fake gateway and no
-file in `backend/app` is changed. Crash tests run the agent in a subprocess and terminate it with `os._exit` at named
-failpoints, then restart it.
+The `container` job builds the image, measures its uncompressed size (`du -sxb /` in the image) against
+`IMAGE_SIZE_BUDGET_MIB` (258), checks that it refuses to start without an https origin, starts it with a
+disposable SQLite database and throwaway generated secrets, and runs `scripts/smoke_public.py --expect-commit
+$GITHUB_SHA`. The smoke test checks the warm-up, `/health` and the deployed commit, the hosted headers
+including the enforced CSP, sign-in, an ALLOW and a BLOCK, single use, and the audit sequence. The job then
+checks that the server runs as uid 10001 with `HOME=/nonexistent`, and restarts the container to prove that
+bootstrap is idempotent and data survives.
 
-`python -B scripts/demo_phase05.py [--evidence PATH]` starts a disposable gateway (temporary runtime, generated key and
-credentials, synthetic corpus), runs the agent through 13 end-to-end checks, and removes everything. It creates nothing
-under `%LOCALAPPDATA%\RootSentinel`. `python -B scripts/verify_phase05.py` runs the full set of release checks and proves
-that `backend/app`, `backend/migrations`, `docs/openapi.json` and `frontend` are unchanged from the Phase 04 head.
-`python -B scripts/source_corpus.py` checks the synthetic corpus manifest. CI runs the agent job on Linux (Python 3.12 and
-3.13) and a Windows job; the first candidate run (42264658907) failed on a defect in a Linux-only test and the rerun (42268818788) passed all eight jobs (see the evidence). See [staging-spec](staging-spec.md).
+After a deploy, run the same smoke test against the hosted URL ([deployment](deployment.md)). Deployed
+measurements (cold start, sign-in time, client identification) are in the
+[Phase 06A evidence](evidence/phase-06a.md).
 
+## 8. Scanners and publication hygiene
 
-## Phase 06A hosted-configuration verification
+In CI: `scripts/audit_publication.py` (credential patterns, private paths, generated files) in the agent
+jobs, and `git diff --exit-code` after the backend, postgres, frontend and agent jobs, so a run that changes
+tracked files fails.
 
-`backend/tests/test_hosted.py` runs against the real application with an https origin, a synthetic built frontend and generated
-credentials: settings validation and unchanged defaults, static serving and traversal attempts, security headers, the proof that
-every anonymous route is denied (and that no unexpected route appears), `public_demo` still closed, `forwarded_client` (hop count,
-spoofing, fail-closed fallbacks) plus its effect on the login limit, the upload, session, retention and rate overrides, `bootstrap`
-(idempotence, hash-only input, rotation, disable, invalid and unsafe files, no secret in output, audit chain and checkpoint), and the
-four gateway invariants. A mutation check (disabling the hop logic) made the spoofing test fail, as it should.
+Run during the quality review, not in CI: `bandit` and `semgrep` (Python and TypeScript static analysis),
+`pip-audit` and `npm audit` (known vulnerable dependencies), `gitleaks` (secrets in history and the working
+tree; `.gitleaksignore` records one reviewed false positive), `trivy` (image and configuration; `.trivyignore`
+records DS002, DS031 and DS026 with reasons), `hadolint` (Dockerfile), `actionlint` and `zizmor` (workflow).
+`actionlint` is not part of CI.
 
-`python -B scripts/smoke_public.py` is the post-deploy smoke test; the CI `container` job builds the image and runs it against a
-disposable SQLite and generated secrets, checks the unprivileged user, and restarts the container to prove bootstrap is idempotent.
-The container job and every deployed measurement (cold start, memory, login time, hop count) are **pending hosted CI or not yet
-measured**; Docker is not available on the development machine.
+## 9. Security scenario matrix
+
+| Scenario | Expected behavior | Covered by |
+|---|---|---|
+| Exact and renamed protected file | BLOCK; release returns no payload | `test_detection_policy.py`, `test_gateway.py`, `test_gateway_edges.py`, agent `test_gateway_integration.py` |
+| Ordinary distinct file | ALLOW; returned bytes have the scanned digest | `test_gateway.py`, `test_hosted.py`, `Gateway.test.ts`, `browser_phase04.py` |
+| Empty file | Scan valid; protected registration rejected | `test_detection_policy.py`, `test_gateway_edges.py` |
+| Size boundaries | Correct at the upload cap; one byte over is 413 | `test_detection_policy.py`, `test_gateway_edges.py`, `test_api_security.py` |
+| Single-byte change in a multiblock file | Remaining aligned blocks trigger BLOCK | `test_detection_policy.py` |
+| Aligned partial copy or embedding | BLOCK at the configured threshold | `test_detection_policy.py`, agent `test_gateway_integration.py` |
+| One-byte shift, line endings, encoding, compression | Documented fixed-block misses, not fake prevention | `test_detection_policy.py`, agent `test_gateway_integration.py` |
+| Shared content | All implicated assets shown; no combining across assets | `test_detection_policy.py`, `test_additional_gates.py` |
+| Valid and corrupt proofs | Success or failure against the registry's trusted root | `test_crypto.py`, `test_presentation.py`, `Integrity.test.tsx`, `browser_phase04.py` |
+| Concurrency | Isolated decisions; overload rejected; one delivery | `test_additional_gates.py`, `test_gateway.py`, `test_gateway_edges.py`, `test_database.py` |
+| Interrupted or oversized uploads | No release; cleanup; 413 for excess bytes | `test_additional_gates.py`, `test_api_security.py`, `test_gateway.py`, `test_gateway_edges.py` |
+| Malformed names, links, traversal | Unsafe input refused; no escaped file access | `test_api_security.py`, `test_gateway_edges.py`, `test_hosted.py`, `test_audit.py`, agent `test_fsutil_cli.py` |
+| Policy precedence, no override | Exact match wins; no role bypasses BLOCK | `test_detection_policy.py`, `test_gateway.py` |
+| Unauthorized or cross-user access | Denied without evidence disclosure | `test_authorization_matrix.py`, `test_api_security.py` |
+| CSRF, Origin, Host | Refused on every operation | `test_authorization_matrix.py`, `test_api_security.py`, `test_hosted.py` |
+| Session fixation, expiry, logout | Client-chosen IDs never adopted; expired and ended sessions refused | `test_authorization_matrix.py`, `test_api_security.py` |
+| Login guessing, client IP spoofing | Per-account, per-client and global limits; forged headers cannot pick a bucket | `test_api_security.py`, `test_client_ip.py`, `test_hosted.py`, `test_smoke_probe.py` |
+| Release replay, expiry, staleness | Nothing delivered; a fresh transfer rescans | `test_gateway.py`, `test_gateway_edges.py`, agent `test_gateway_integration.py` |
+| Audit edits and reordering | Verification fails without the audit key; release stops | `test_audit.py`, `test_gateway.py`, `test_gateway_edges.py` |
+| Audit tail deletion | Detected against a retained checkpoint; uncheckpointed tail is a stated limitation | `test_audit.py`, `test_gateway_edges.py` |
+| TOCTOU mutation | Only frozen checked bytes can be delivered | `test_api_security.py`, `test_gateway.py`, agent `test_pipeline_faults.py` |
+| Agent or network disconnection | No delivery on an unknown decision; idempotent retry | agent `test_pipeline_faults.py`, `test_gateway_integration.py` |
+| Secrets in output | No password, token or key in logs, reports or command output | `test_operator_tools.py`, `test_hosted.py`, `test_gateway.py`, agent `test_pipeline_faults.py` and `test_fsutil_cli.py`, publication audit |
+| Content Security Policy | Enforced on every response; zero violations in the browser run | `test_hosted.py`, `browser_phase04.py`, `browser_phase04_negative.py`, `smoke_public.py` |
+| Copy outside the gateway | Not prevented; no gateway event is invented | No test: outside the enforcement boundary |
+
+## 10. Benchmarks (not executed in full)
+
+`scripts/benchmark_phase02.py --output <file>` and `scripts/benchmark_phase03.py` measured local synthetic
+samples (SQLite, deterministic blocks); their results are in the Phase 02 and Phase 03 evidence. Traced Python
+allocation peaks are not process RSS. Shared-host load and tracing affect timings. Deployed cold start and
+sign-in time are in the Phase 06A evidence.
+
+The full protocol below has not been executed. Use synthetic files of 0 B, 100 B, 1 KiB, 8 KiB, 1 MiB and
+10 MiB. Compare fixed chunk sizes 256 B, 1 KiB and 4 KiB offline without changing the product's v1 profile.
+Perform five warm-ups and thirty measured repetitions; retain raw results, environment and commit. Report
+median, p95 and range, throughput, peak memory, fingerprint storage, proof size and proof verification time.
+Separate cold starts.
+
+Measure precision, recall and false positive rate against labelled ground truth. Use N/A for zero
+denominators. Separate detector recall from correct enforcement of its decision: a correctly enforced ALLOW
+may still be a false negative. Content-defined chunking comparisons need a real validated implementation;
+no placeholder results.
+
+## 11. Phase gate scripts (historical)
+
+`scripts/verify_phase02.py`, `verify_phase03.py` and `verify_phase05.py` were the release gates of their
+phases. They rerun the test suites and write sanitized results to `docs/evidence/phase-02-checks.json`,
+`phase-03-checks.json` and `phase-05-checks.json`; `benchmark_phase03.py` writes
+`docs/evidence/phase-03-benchmark.json`, and `benchmark_phase02.py` writes wherever `--output` points.
+**Running them rewrites recorded evidence**: inspect the diff and discard it unless a new record is intended.
+`verify_phase05.py` also checks that `backend/app`, `backend/migrations`, `docs/openapi.json` and `frontend`
+are unchanged from the Phase 04 head; later phases changed those paths, so that check now fails by design.
+`python -B scripts/export_openapi.py` regenerates `docs/openapi.json` after an approved API change.

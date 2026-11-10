@@ -1,6 +1,7 @@
 # Database schema and migrations
 
-SQLAlchemy 2.0 maps eleven application tables; Alembic adds its version table.
+SQLAlchemy 2.0 maps seventeen application tables (eleven in `backend/app/models.py`,
+six in `backend/app/gateway_models.py`); Alembic adds its version table.
 Identifiers are UUID strings except the singleton registry state's fixed key.
 UTC timestamps are timezone-aware in Python/PostgreSQL; SQLite stores UTC values
 and the type adapter restores timezone information on reads.
@@ -69,7 +70,7 @@ dedicated test database and role with schema-creation permissions. The same test
 run on SQLite and PostgreSQL; without that variable only SQLite executes. See the
 Phase 02 evidence for what was actually run. SQL compilation alone is not parity.
 
-## Migration 0002 ? controlled transfer evidence
+## Migration 0002: controlled transfer evidence
 
 Adds `transfers`, `release_attempts`, `incidents`, `incident_history`, `audit_heads`,
 `audit_events`. Snapshot identity/digest/length/expiry live on transfers; payload bytes live

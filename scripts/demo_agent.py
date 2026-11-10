@@ -5,7 +5,7 @@ registers a synthetic source corpus as ADMIN, then drives the real agent through
 acceptance scenarios and checks each outcome. It creates nothing persistent: no keys, users or
 directories under %LOCALAPPDATA%\\RootSentinel, and everything is removed at the end.
 
-    python -B scripts/demo_phase05.py [--evidence PATH]
+    python -B scripts/demo_agent.py [--evidence PATH]
 
 Needs the backend dependencies (the same environment as the backend tests). The output and
 the evidence JSON contain hashes, states, counts and timings only: no paths or credentials.
@@ -293,7 +293,7 @@ def run(evidence: Path | None) -> int:
         check("audit chain still verifies after every scenario", final["valid"] is True, through_sequence=final["through_sequence"])
         print(f"\nAll {len(RESULTS)} checks passed in {time.time() - started:.1f}s")
         if evidence:
-            evidence.write_text(json.dumps({"script": "scripts/demo_phase05.py", "platform": sys.platform, "python": sys.version.split()[0],
+            evidence.write_text(json.dumps({"script": "scripts/demo_agent.py", "platform": sys.platform, "python": sys.version.split()[0],
                                             "duration_seconds": round(time.time() - started, 1), "checks": RESULTS,
                                             "note": "Disposable gateway, generated credentials, synthetic corpus. Hashes, states and counts only."}, indent=2) + "\n", encoding="utf-8")
         return 0

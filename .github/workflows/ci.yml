@@ -149,7 +149,7 @@ jobs:
         run: python -m pytest -p no:cacheprovider
         working-directory: agent
       - name: End-to-end demonstration against a disposable gateway
-        run: python -B scripts/demo_phase05.py --evidence "$RUNNER_TEMP/phase-05-demo-${{ matrix.python-version }}.json"
+        run: python -B scripts/demo_agent.py --evidence "$RUNNER_TEMP/agent-demo-${{ matrix.python-version }}.json"
       - name: Publication audit (credential patterns, private paths, generated files)
         run: python -B scripts/audit_publication.py > /dev/null
       - run: git diff --exit-code
@@ -157,7 +157,7 @@ jobs:
         if: always()
         with:
           name: sanitized-agent-evidence-${{ matrix.python-version }}
-          path: ${{ runner.temp }}/phase-05-demo-${{ matrix.python-version }}.json
+          path: ${{ runner.temp }}/agent-demo-${{ matrix.python-version }}.json
   agent-windows:
     # The agent's primary platform. Windows-specific behavior (junctions, reparse points, lstat identity).
     runs-on: windows-latest
@@ -176,13 +176,13 @@ jobs:
         run: python -m pytest -p no:cacheprovider
         working-directory: agent
       - name: End-to-end demonstration on Windows
-        run: python -B scripts/demo_phase05.py --evidence "$env:RUNNER_TEMP/phase-05-demo-windows.json"
+        run: python -B scripts/demo_agent.py --evidence "$env:RUNNER_TEMP/agent-demo-windows.json"
         shell: pwsh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: sanitized-agent-evidence-windows
-          path: ${{ runner.temp }}/phase-05-demo-windows.json
+          path: ${{ runner.temp }}/agent-demo-windows.json
   container:
     # Phase 06A: build the hosted image and smoke-test it with a disposable SQLite database and
     # throwaway generated secrets. No deploy tokens exist in CI; deploying is a manual platform action.

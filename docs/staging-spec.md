@@ -1,4 +1,4 @@
-# Staging gateway agent — specification (Phase 05)
+# Staging gateway agent specification (Phase 05)
 
 Topic Guide requirement (T P15): *a local file gateway script monitoring an employee's staging
 directory, hashing outbound files against a blacklist of corporate intellectual property hashes to
@@ -11,8 +11,9 @@ enforcement stops, and how it recovers from failure. "Instantly block" keeps the
 `agent/rootsentinel_agent` is a separate, standard-library-only process. It is a **client** of the existing
 REST gateway ([API](api.md), [transfer protocol](transfer-spec.md)). The server stays the only decision
 maker: the agent holds no hash registry, makes no allow/deny decision and changes none of the gateway's
-cryptography, detection, policy, release or audit logic (`backend/app`, migrations, OpenAPI and the
-frontend are byte-identical to the Phase 04 head; see `scripts/verify_phase05.py`).
+cryptography, detection, policy, release or audit logic. At Phase 05 completion `backend/app`, migrations,
+OpenAPI and the frontend were byte-identical to the Phase 04 head (`scripts/verify_phase05.py`, recorded in the
+[Phase 05 evidence](evidence/phase-05.md)). Later phases changed those paths, so that boundary check now fails by design.
 
 The agent controls **only what reaches its outbound directory**. A file is placed there only after
 (1) the gateway persisted ALLOW, (2) the single-use release returned bytes, and (3) those bytes matched
@@ -27,8 +28,9 @@ protection exists only where the organisation makes the agent's outbound directo
 
 Content limits are those of fixed 1 KiB block matching ([detection](detection-spec.md)): shifted, re-encoded
 (CRLF, UTF-16), compressed or archived copies and copies below the policy threshold are **known misses**.
-The tests assert these misses explicitly so they cannot be hidden. Files over 10 MiB are never scanned
-and therefore never delivered. Files in subdirectories are not scanned (nonrecursive).
+The tests assert these misses explicitly so they cannot be hidden. Files over 10 MiB are rejected by the
+agent and never scanned or delivered. A gateway configured with a lower upload cap answers 413
+`INPUT_TOO_LARGE`; the agent holds that file (`SUBMIT_REJECTED:INPUT_TOO_LARGE`) and delivers nothing. Files in subdirectories are not scanned (nonrecursive).
 
 On Windows, separating *who may write* staging from *who may write* outbound is an **operator step** (a
 second account and ACLs). On a one-person machine the employee and the agent are the same user, so the
@@ -60,7 +62,7 @@ Each entry is classified with `lstat`; these are rejected, left in place, journa
 | `SPECIAL_FILE` | FIFO, socket, device |
 | `HARDLINK` | link count other than 1 |
 | `EMPTY_FILE` | zero bytes (visible reason, held; an empty file cannot be a protected asset) |
-| `TOO_LARGE` | over 10 MiB (the gateway's limit) |
+| `TOO_LARGE` | over 10 MiB (the agent's own limit, equal to the gateway's default cap) |
 | `IDENTITY_UNAVAILABLE` | the platform returned no file identity (fail closed) |
 
 Ordinary files are admitted by **stability polling**: the same (device, inode, size, mtime) on
@@ -79,7 +81,7 @@ that was scanned; an edit made meanwhile is kept and processed as a new file.
 ### Platform differences (verified, not assumed)
 
 * **POSIX:** descriptor-relative access (`dir_fd`) with `O_NOFOLLOW`, as promised in the
-  [developer guide](developer-guide.md#staging-agent-phase-05). A symlink swapped in after observation is not followed.
+  [developer guide](developer-guide.md#staging-agent). A symlink swapped in after observation is not followed.
 * **Windows:** there is no `dir_fd`; the agent uses `lstat`, the reparse-point attribute, link counts and the
   post-open identity comparison. A small time-of-check/time-of-use window remains against a hostile writer who
   can replace operator-owned parent directories; that is outside the threat model ([threat model](threat-model.md)).
@@ -161,17 +163,20 @@ verifying facts on disk and with the gateway rather than trusting the journal al
 
 * Gateway in `local` mode (everything under `/api/v1` is closed in `public_demo`). The public browser workflow does not
   depend on the agent and nothing in `backend/app` or `frontend/src` references it (checked by `verify_phase05.py`).
-* `Host` must be the gateway's permitted loopback host; mutating calls carry `Origin` equal to the gateway's configured
+* `Host` must be in the gateway's permitted list (the origin's host, `127.0.0.1:8000`, `localhost:8000` and any
+  `ROOTSENTINEL_EXTRA_HOSTS`); mutating calls carry `Origin` equal to the gateway's configured
   origin and `X-CSRF-Token`. Plaintext HTTP is accepted only to loopback; any other host needs HTTPS.
 * The session cookie `rs_session` is Secure, HttpOnly and SameSite=Strict, so the agent reads it from `Set-Cookie` and
-  attaches it manually (no cookie jar). Backend settings are not loosened for the agent. The session lasts 3600 s; a 401
+  attaches it manually (no cookie jar). Backend settings are not loosened for the agent. The session lasts
+  `ROOTSENTINEL_SESSION_SECONDS` (default 3600 s); a 401
   triggers one re-login (never faster than every 15 s; the gateway allows 5 logins per minute per account).
 * `Content-Type: application/octet-stream` exactly; a UUID Idempotency-Key; the filename label must match
-  `^[A-Za-z0-9][A-Za-z0-9 ._()-]*$` (1–120). The agent's sanitizer maps any name to a valid label (also safe as a Windows
+  `^[A-Za-z0-9][A-Za-z0-9 ._()-]*$` (1 to 120 characters). The agent's sanitizer maps any name to a valid label (also safe as a Windows
   file name) and never uses the label as a path on the server.
 * The agent account must be `EMPLOYEE` (least privilege); it aborts at startup otherwise. Release is owner-only, so the same
   account submits and releases.
-* Self-imposed budget of 20 counted calls per minute (submit and release share the gateway's 30 per account). 429 → wait
+* Self-imposed budget of 20 counted calls per minute (submit and release share the gateway's per-account limit,
+  `ROOTSENTINEL_TRANSFER_RATE_PER_MINUTE`, default 30). 429 → wait
   15 s then 60 s; capacity 503 → wait a few seconds; both leave the file untouched. 403 and a rejected login are fatal
   (retrying cannot help). Three consecutive audit/checkpoint failures at release stop the agent (fail closed).
 
@@ -213,7 +218,7 @@ turns in-flight ALLOWED transfers STALE, so register first). Its password comes 
 
 ## Provisioning (exact commands; run by the operator)
 
-The automated tests and `scripts/demo_phase05.py` use a disposable gateway with a temporary runtime and generated
+The automated tests and `scripts/demo_agent.py` use a disposable gateway with a temporary runtime and generated
 credentials. They create nothing persistent. The commands below create a persistent local setup; run them yourself.
 Use an existing Python 3.12/3.13 environment that already has `backend/requirements-dev.lock` installed.
 
@@ -288,8 +293,8 @@ See [Phase 05 evidence](evidence/phase-05.md) for results. Criteria and the test
 | 9 | kill during the outbound write leaves no partial visible file | `test_c9_…` |
 | 10 | no credentials in logs, journal, reports or Git | `test_no_credentials_…`, `test_cli_has_no_password_option_…`, publication audit |
 | 11 | CI job runs the agent against a real gateway | `agent` and `agent-windows` jobs in `.github/workflows/ci.yml`; both passed in run 42268818788 |
-| 12 | existing tests, crypto and migrations unaffected | `scripts/verify_phase05.py` boundary diffs |
-| 13 | reproducible demo, spec, threat model, evidence | `scripts/demo_phase05.py`, this document |
+| 12 | existing tests, crypto and migrations unaffected | `scripts/verify_phase05.py` boundary diffs (held at Phase 05; later phases changed those paths) |
+| 13 | reproducible demo, spec, threat model, evidence | `scripts/demo_agent.py`, this document |
 
 ## Known limitations
 

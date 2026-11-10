@@ -1,4 +1,4 @@
-# Phase 02 — registry, detection and policy evidence
+# Phase 02: registry, detection and policy evidence
 
 Implementation baseline: published Phase 01 commit
 `5d6df58a6118a79e8c6b3928a4225c3aebef6b15`, branch `main`, existing origin
@@ -123,8 +123,8 @@ production-scale parity for untested workloads or database configurations.
 | Criterion | Evidence |
 |---|---|
 | 1 Crypto regressions preserved | Unchanged core diff, 22 tests/606 subtests |
-| 2–3 Persistent immutable registry | Registration/version/retirement/history tests and DB triggers |
-| 4–6 Exact/block/multiple-asset evidence | Fixture matrix, repetition/coverage/query-bound tests |
+| 2 to 3 Persistent immutable registry | Registration/version/retirement/history tests and DB triggers |
+| 4 to 6 Exact/block/multiple-asset evidence | Fixture matrix, repetition/coverage/query-bound tests |
 | 7 Deterministic versioned policy | Strict threshold, precedence, stale version and persistence tests |
 | 8 Authentication/authorization | Role, ownership, token lifecycle, CSRF/Origin/Host and throttle tests |
 | 9 Safe bounded intake | External temp storage, stream/limit/disconnect/frozen-buffer tests |
