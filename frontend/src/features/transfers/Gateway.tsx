@@ -179,6 +179,13 @@ function TransferList() {
                 <option value="shifted">
                   One-byte prefix: known blind spot
                 </option>
+                <option value="source">Exact source sample</option>
+                <option value="source_shifted">
+                  Source sample with a one-byte prefix
+                </option>
+                <option value="source_inserted">
+                  Source sample with an inserted line
+                </option>
                 <option value="empty">Empty file</option>
               </select>
             </label>
@@ -309,6 +316,11 @@ function TransferList() {
                     <p>
                       Threshold: {policy.data.threshold.toLocaleString()}{" "}
                       matching bytes per asset.
+                    </p>
+                    <p>
+                      {policy.data.cdc_threshold
+                        ? `Content-defined chunks: ${policy.data.cdc_threshold.toLocaleString()} matching bytes per asset.`
+                        : "Content-defined chunks are not evaluated by this policy (rule set rs-policy-v1)."}
                     </p>
                   </div>
                 </li>

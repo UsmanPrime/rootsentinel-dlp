@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api, ApiError, fixture, jsonBody } from "./api";
+import { api, ApiError, fixture, jsonBody, sourceSample } from "./api";
 import { errorMessage } from "./lib/errors";
 afterEach(() => vi.unstubAllGlobals());
 describe("HTTP boundary", () => {
@@ -70,5 +71,19 @@ describe("HTTP boundary", () => {
     expect(fixture("protected")).toEqual(fixture("renamed"));
     expect(fixture("odd").byteLength).toBe(2049);
     expect(fixture("empty").byteLength).toBe(0);
+  });
+  it("builds the source sample byte for byte as the server's seed asset", () => {
+    // The same constant as SOURCE_SAMPLE_SHA256 in backend/app/synthetic.py.
+    const source = fixture("source");
+    expect(source.byteLength).toBe(6954);
+    expect(createHash("sha256").update(source).digest("hex")).toBe(
+      "80d5bd83e3aedc3f3c183f950d7e8233b13c511bb0e1202080cde6747713939e",
+    );
+    expect(fixture("source_shifted").byteLength).toBe(6955);
+    expect(fixture("source_shifted").slice(1)).toEqual(source);
+    const inserted = new TextDecoder().decode(fixture("source_inserted"));
+    expect(inserted.length).toBe(6954 + 16);
+    expect(inserted.replace("# inserted line\n", "")).toBe(sourceSample());
+    expect(inserted.indexOf("# inserted line\n")).toBeLessThan(1024);
   });
 });

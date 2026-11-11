@@ -52,6 +52,33 @@ export function jsonBody(body: unknown): RequestInit {
   };
 }
 
+/**
+ * Source-shaped synthetic text with enough variety for content-defined chunking. The same bytes as
+ * `app.synthetic.source_sample()` on the server (the hosted seed "synthetic-source-sample"); a test on each
+ * side pins one SHA-256, so the two generators cannot drift apart.
+ */
+export function sourceSample(): string {
+  const lines = [
+    "# SYNTHETIC RootSentinel demo source sample: pricing/quote_engine.py\n",
+    "# Generated deterministically. Not real intellectual property.\n",
+  ];
+  let state = 0x52535344;
+  const word = () => {
+    state = (state ^ (state << 13)) >>> 0;
+    state = (state ^ (state >>> 17)) >>> 0;
+    state = (state ^ (state << 5)) >>> 0;
+    return state.toString(16).padStart(8, "0");
+  };
+  for (let step = 0; step < 56; step++) {
+    const [rule, factor, offset, modulus] = [word(), word(), word(), word()];
+    lines.push(
+      `\ndef quote_engine_step_${step}(value):\n    # synthetic rule ${rule}\n` +
+        `    return (value * 0x${factor} + 0x${offset}) % 0x${modulus}\n`,
+    );
+  }
+  return lines.join("");
+}
+
 /** Synthetic byte fixtures only; all fingerprints and decisions come from the server. */
 export function fixture(name: string): Uint8Array<ArrayBuffer> {
   const encoder = new TextEncoder();
@@ -60,7 +87,13 @@ export function fixture(name: string): Uint8Array<ArrayBuffer> {
     return line.repeat(Math.floor(1024 / line.length) + 1).slice(0, 1024);
   });
   const protectedText = blocks.join("");
+  const source = sourceSample();
+  const header = source.indexOf("\n\n") + 1;
   const fixtures: Record<string, string> = {
+    source,
+    source_shifted: "!" + source,
+    source_inserted:
+      source.slice(0, header) + "# inserted line\n" + source.slice(header),
     protected: protectedText,
     renamed: protectedText,
     partial: blocks[2] + blocks[3],

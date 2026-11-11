@@ -165,6 +165,26 @@ def main():
             page.get_by_role("button", name="06 Submit a renamed copy").click(); page.get_by_role("button", name="Evaluate renamed copy").click(); expect(page.get_by_text("BLOCKED", exact=True)).to_be_visible()
             page.get_by_role("button", name="08 Submit a benign sample").click(); page.get_by_role("button", name="Evaluate benign sample").click(); expect(page.get_by_text("ALLOWED", exact=True)).to_be_visible(); passed("guided demonstration uses real registry, proofs and transfer decisions")
             screenshot("guide-desktop"); axe("guide")
+            # Detection profiles: the fixed profile misses a shifted copy (rule set rs-policy-v1); after an administrator
+            # activates rs-policy-v2 the same bytes are blocked by the content-defined profile. Real decisions throughout.
+            source = register("Synthetic source sample", "source")
+            assert [(p["profile_id"], p["fingerprinted"], p["chunk_count"]) for p in source["profiles"]] == [("rs-fixed-sha256-v1", True, 7), ("rs-cdc-gear-v1", True, 4)], source["profiles"]
+            expect(page.get_by_role("list", name="Detection profiles").first).to_contain_text("4 chunks registered"); axe("asset details with profiles"); passed("asset details list the fingerprints of each detection profile")
+            missed = transfer("source_shifted", "ALLOWED"); assert [e["profile_id"] for e in missed["scan"]["detection"]["profiles"]] == ["rs-fixed-sha256-v1"]
+            expect(page.locator(".verdict-why")).to_contain_text("Content-defined chunks were not evaluated"); passed("shifted copy is a recorded miss of the fixed profile under rule set rs-policy-v1")
+            visit("/policies"); page.get_by_role("button", name="Create policy version").click(); page.get_by_role("combobox", name="Rule set", exact=True).select_option("rs-policy-v2")
+            expect(page.get_by_label("Minimum bytes in shared content-defined chunks")).to_have_value("2048")
+            page.get_by_role("button", name="Confirm new version").click(); expect(page.get_by_text("is now active.", exact=False)).to_be_visible(); expect(page.get_by_text("Evaluates fixed blocks and content-defined chunks.", exact=True)).to_be_visible()
+            axe("policies rule set v2"); passed("administrator activates rule set rs-policy-v2 in the interface")
+            caught = transfer("source_shifted", "BLOCKED"); assert caught["scan"]["decision"]["reason"] == "CDC_THRESHOLD_MET", caught["scan"]["decision"]
+            by_profile = {e["profile_id"]: e for e in caught["scan"]["detection"]["profiles"]}
+            assert by_profile["rs-fixed-sha256-v1"]["matches"] == [] and by_profile["rs-cdc-gear-v1"]["matches"][0]["matched_bytes"] == 5480 and by_profile["rs-cdc-gear-v1"]["matches"][0]["matched_chunks"] == 3, by_profile
+            why = page.locator(".verdict-why"); expect(why).to_contain_text("Content-defined threshold met"); expect(why).to_contain_text("3 of 4 chunks"); expect(why).to_contain_text("0 of 7 blocks"); expect(why).to_contain_text("rs-cdc-gear-v1")
+            expect(page.get_by_role("button", name="Verified download", exact=True)).to_have_count(0)
+            refused = context.request.post(origin + f"/api/v1/transfers/{caught['id']}/release", headers={"Origin": origin, "X-CSRF-Token": csrf()}); assert refused.status == 409 and b"quote_engine" not in refused.body()
+            screenshot("cdc-blocked-transfer-desktop"); axe("content-defined blocked transfer"); passed("shifted copy BLOCKED by the content-defined profile; panel shows bytes and chunk counts per profile")
+            lined = transfer("source_inserted", "BLOCKED"); assert lined["scan"]["decision"]["reason"] == "CDC_THRESHOLD_MET" and not lined["scan"]["detection"]["matches"]; passed("copy with an inserted line BLOCKED by the content-defined profile")
+            assert transfer("benign", "ALLOWED")["scan"]["decision"]["reason"] == "NO_QUALIFYING_MATCH"; passed("benign input stays ALLOWED under rule set rs-policy-v2")
             # Exact route data and responsive behavior across all requested widths.
             routes = [("overview", "/"), ("gateway", "/transfers"), ("assets", "/assets"), ("integrity", f"/integrity?asset={protected['asset_id']}&version={protected['id']}"), ("incidents", "/incidents"), ("audit", "/audit"), ("policies", "/policies"), ("guide", "/guide")]
             for width in (320, 375, 768, 1024, 1440, 1920):

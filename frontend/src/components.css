@@ -292,6 +292,42 @@ progress::-moz-progress-bar {
 .why-match-numbers strong {
   color: var(--text);
 }
+.why-profile {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.why-profile-name {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 12px;
+  font-size: var(--text-sm);
+}
+.profile-id {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  margin-right: 8px;
+  overflow-wrap: anywhere;
+}
+.profile-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+}
+.profile-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
 .coverage-bar {
   display: block;
   width: 100%;

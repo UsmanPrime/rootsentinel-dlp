@@ -28,6 +28,7 @@ jobs:
       - run: python -m pytest
         working-directory: backend
       - run: python -B scripts/fixtures.py
+      - run: python -B scripts/cdc_vectors.py
       - run: python -B scripts/frontend_contracts.py --check
       - run: git diff --exit-code
   browser:
@@ -322,7 +323,13 @@ jobs:
         run: |
           docker restart rootsentinel
           python -B scripts/smoke_public.py --base-url http://127.0.0.1:8000 --origin "$ROOTSENTINEL_CI_ORIGIN" --username ci-analyst --password-file "$RUNNER_TEMP/rs-container-secrets/smoke-password" --warmup-seconds 120
-          docker logs rootsentinel 2>&1 | grep -c "assets: seeded=0 existing=1" | grep -qx 1
+          # Two synthetic seeds. The first start registers both and activates rule set rs-policy-v2 once; the
+          # restart finds both, adds no fingerprints and leaves the policy alone.
+          docker logs rootsentinel 2>&1 | grep -c "assets: seeded=2 existing=0" | grep -qx 1
+          docker logs rootsentinel 2>&1 | grep -c "assets: seeded=0 existing=2" | grep -qx 1
+          docker logs rootsentinel 2>&1 | grep -c "policy: rule set rs-policy-v2 activated" | grep -qx 1
+          docker logs rootsentinel 2>&1 | grep -c "policy: rule set rs-policy-v2 not changed" | grep -qx 1
+          docker logs rootsentinel 2>&1 | grep -c "profiles: seed assets given missing fingerprints=0" | grep -qx 2
       - name: Container logs
         if: always()
         run: docker logs rootsentinel || true

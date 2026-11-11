@@ -53,8 +53,10 @@ export const reasonText: Record<string, string> = {
     "The entire file matches registered protected bytes, regardless of its name.",
   BLOCK_THRESHOLD_MET:
     "Matching bytes for a protected asset meet the active policy threshold.",
+  CDC_THRESHOLD_MET:
+    "Content-defined chunks shared with a protected asset meet the active policy threshold.",
   NO_QUALIFYING_MATCH:
-    "No match met the blocking policy. Transformed content can evade raw-byte matching.",
+    "No match met the blocking policy. Re-encoded or compressed content can evade raw-byte matching.",
   RELEASE_WINDOW_EXPIRED: "The snapshot retention window has expired.",
   REVISIONS_CHANGED: "The policy or registry changed after this evaluation.",
   SERVER_SEND_COMPLETED:

@@ -20,6 +20,7 @@ import { bytes, date, short } from "../../lib/errors";
 import { useSession } from "../../lib/session";
 import { useEnvironment } from "../../lib/environment";
 import { useToast } from "../../lib/toast";
+import { PROFILE_NAMES } from "../../components/Verdict";
 
 /** The server's display-label rule (schemas.Label), checked before sending so the form can explain it. */
 const ASSET_LABEL = /^[A-Za-z0-9][A-Za-z0-9 ._()-]{0,119}$/;
@@ -120,6 +121,9 @@ export function Registration({
           Registration input
           <select value={source} onChange={(e) => setSource(e.target.value)}>
             <option value="protected">Protected sample · 8 blocks</option>
+            <option value="source">
+              Source sample · 7 blocks, 4 content-defined chunks
+            </option>
             <option value="odd">Uneven tree sample · 3 chunks</option>
             <option value="local">Local synthetic file</option>
           </select>
@@ -393,8 +397,33 @@ function AssetDetail({ id }: { id: string }) {
             chunk descriptors; it is an integrity commitment, not a similarity
             score.
           </p>
+          <h3 className="field-caption">DETECTION PROFILES</h3>
+          <ul className="profile-list" aria-label="Detection profiles">
+            {(v.profiles ?? []).map((p) => (
+              <li key={p.profile_id}>
+                <span>
+                  {PROFILE_NAMES[p.profile_id]?.name ?? p.profile_id}{" "}
+                  <code className="profile-id">{p.profile_id}</code>
+                </span>
+                <span>
+                  {p.fingerprinted ? (
+                    <>
+                      <strong>{p.chunk_count}</strong>{" "}
+                      {PROFILE_NAMES[p.profile_id]?.unit ?? "chunks"} registered
+                    </>
+                  ) : (
+                    <span className="muted">
+                      Not fingerprinted. This version was registered before the
+                      profile existed and its bytes are not stored; register a
+                      new version to add it.
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
           <small className="muted break">
-            Profile {v.manifest.profile_id} · Version ID {v.id}
+            Manifest profile {v.manifest.profile_id} · Version ID {v.id}
           </small>
         </Panel>
       ))}
