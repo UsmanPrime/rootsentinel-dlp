@@ -331,6 +331,14 @@
             "title": "Matches",
             "type": "array"
           },
+          "profiles": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ProfileEvidence"
+            },
+            "title": "Profiles",
+            "type": "array"
+          },
           "registry_revision": {
             "title": "Registry Revision",
             "type": "integer"
@@ -917,9 +925,37 @@
             "title": "Block Enabled",
             "type": "boolean"
           },
+          "cdc_threshold": {
+            "anyOf": [
+              {
+                "maximum": 10485760.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cdc Threshold"
+          },
           "expected_version": {
             "title": "Expected Version",
             "type": "string"
+          },
+          "rule_set": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rs-policy-v1",
+                  "rs-policy-v2"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Set"
           },
           "threshold": {
             "default": 1024,
@@ -980,6 +1016,17 @@
             "title": "Block Enabled",
             "type": "boolean"
           },
+          "cdc_threshold": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cdc Threshold"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -992,6 +1039,11 @@
           "number": {
             "title": "Number",
             "type": "integer"
+          },
+          "rule_set": {
+            "default": "rs-policy-v1",
+            "title": "Rule Set",
+            "type": "string"
           },
           "threshold": {
             "title": "Threshold",
@@ -1007,6 +1059,124 @@
           "created_at"
         ],
         "title": "PolicyView",
+        "type": "object"
+      },
+      "ProfileEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "chunk_count": {
+            "title": "Chunk Count",
+            "type": "integer"
+          },
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileMatch"
+            },
+            "title": "Matches",
+            "type": "array"
+          },
+          "profile_id": {
+            "title": "Profile Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id",
+          "chunk_count",
+          "matches"
+        ],
+        "title": "ProfileEvidence",
+        "type": "object"
+      },
+      "ProfileMatch": {
+        "additionalProperties": false,
+        "description": "What one profile found for one protected asset version. Intervals are merged half-open byte runs of the\nsubmitted file; matched_chunks counts the distinct submitted chunks of that profile that matched.",
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "intervals": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Intervals",
+            "type": "array"
+          },
+          "matched_bytes": {
+            "title": "Matched Bytes",
+            "type": "integer"
+          },
+          "matched_chunks": {
+            "title": "Matched Chunks",
+            "type": "integer"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "version_id",
+          "matched_bytes",
+          "matched_chunks",
+          "coverage",
+          "intervals"
+        ],
+        "title": "ProfileMatch",
+        "type": "object"
+      },
+      "ProfileView": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "title": "Parameters",
+            "type": "object"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "summary",
+          "parameters"
+        ],
+        "title": "ProfileView",
         "type": "object"
       },
       "ProofView": {
@@ -1578,6 +1748,31 @@
         "title": "UserView",
         "type": "object"
       },
+      "VersionProfile": {
+        "additionalProperties": false,
+        "description": "Whether one asset version carries fingerprints of one detection profile, and how many chunks.",
+        "properties": {
+          "chunk_count": {
+            "title": "Chunk Count",
+            "type": "integer"
+          },
+          "fingerprinted": {
+            "title": "Fingerprinted",
+            "type": "boolean"
+          },
+          "profile_id": {
+            "title": "Profile Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id",
+          "fingerprinted",
+          "chunk_count"
+        ],
+        "title": "VersionProfile",
+        "type": "object"
+      },
       "VersionSummary": {
         "additionalProperties": false,
         "properties": {
@@ -1604,6 +1799,14 @@
           "number": {
             "title": "Number",
             "type": "integer"
+          },
+          "profiles": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VersionProfile"
+            },
+            "title": "Profiles",
+            "type": "array"
           },
           "registry_revision": {
             "title": "Registry Revision",
@@ -1655,6 +1858,14 @@
           "number": {
             "title": "Number",
             "type": "integer"
+          },
+          "profiles": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VersionProfile"
+            },
+            "title": "Profiles",
+            "type": "array"
           },
           "registry_revision": {
             "title": "Registry Revision",
@@ -4207,6 +4418,153 @@
           }
         },
         "summary": "Session Status"
+      }
+    },
+    "/api/v1/detection/profiles": {
+      "get": {
+        "description": "The registered detection profiles and their published parameters. Constants: no database call.",
+        "operationId": "detection_profiles_api_v1_detection_profiles_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProfileView"
+                  },
+                  "title": "Response Detection Profiles Api V1 Detection Profiles Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Content Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Detection Profiles"
       }
     },
     "/api/v1/exports/incidents/{identifier}": {

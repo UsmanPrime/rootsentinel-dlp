@@ -39,6 +39,7 @@ ACCESS = {
     ("get", "/api/v1/assets/{asset_id}/versions/{version_id}/proofs/{index}"): PRIVILEGED,
     ("get", "/api/v1/assets/{asset_id}/versions/{version_id}/tree"): PRIVILEGED,
     ("post", "/api/v1/integrity/verify"): PRIVILEGED,
+    ("get", "/api/v1/detection/profiles"): ANY,
     ("get", "/api/v1/policies/active"): ANY,
     ("get", "/api/v1/policies/history"): PRIVILEGED,
     ("post", "/api/v1/policies"): ADMIN_ONLY,

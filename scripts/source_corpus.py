@@ -51,12 +51,16 @@ def corpus() -> dict[str, bytes]:
 
 def variants(data: bytes) -> dict[str, bytes]:
     """Copies of a protected file as an insider might make them. Several are KNOWN MISSES of
-    fixed 1 KiB block matching; they are documented and asserted, not hidden."""
+    fixed 1 KiB block matching; they are documented and asserted, not hidden. The content-defined
+    profile (policy rule set rs-policy-v2) finds the shifted and the inserted copy; the re-encoded
+    and compressed copies stay misses of both profiles."""
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
         bundle.writestr("copy.py", data)
     tail = len(data) % 1024
+    header = data.index(b"\n\n") + 1 if b"\n\n" in data else 0
     return {
+        "inserted": data[:header] + b"# inserted line\n" + data[header:],  # KNOWN MISS of fixed blocks: a line added in the first block
         "exact_renamed": data,
         "aligned_partial": data[1024:3072],            # two whole aligned blocks: follows the policy (BLOCK)
         "single_aligned_block": data[1024:2048],       # exactly the default threshold (BLOCK)

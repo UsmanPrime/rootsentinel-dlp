@@ -300,22 +300,24 @@ def test_bootstrap_is_idempotent_prints_no_secrets_and_seeds_through_the_audit_c
     args = bootstrap_environment(monkeypatch, system, tmp_path, accounts)
     assert bootstrap.main(args) == 0
     first = capsys.readouterr()
-    assert "created=2 updated=0 unchanged=0" in first.out and "seeded=1 existing=0" in first.out
+    assert "created=2 updated=0 unchanged=0" in first.out and "seeded=2 existing=0" in first.out
+    assert "rule set rs-policy-v2 activated" in first.out
     assert bootstrap.main(args) == 0
     second = capsys.readouterr()
-    assert "created=0 updated=0 unchanged=2" in second.out and "seeded=0 existing=1" in second.out
+    assert "created=0 updated=0 unchanged=2" in second.out and "seeded=0 existing=2" in second.out
+    assert "missing fingerprints=0" in first.out + second.out and "rule set rs-policy-v2 not changed" in second.out
     for text_ in (first.out + first.err + second.out + second.err):
         assert password not in text_ and digest not in text_ and "presenter-admin" not in text_ and "class-user" not in text_
     db = system[1]
     with db.transaction() as s:
-        assert s.scalar(select(Asset.label)) == "synthetic-protected-sample"
+        assert set(s.scalars(select(Asset.label))) == {"synthetic-protected-sample", "synthetic-source-sample"}
         kinds = [json.loads(e.canonical)["kind"] for e in s.scalars(select(AuditEvent).order_by(AuditEvent.sequence))]
-        assert kinds == ["ASSET_REGISTERED"]                                  # exactly once across two runs
+        assert kinds == ["ASSET_REGISTERED", "ASSET_REGISTERED", "POLICY_CHANGED"]   # each exactly once across two runs
         system_user = s.scalar(select(User).where(User.username == bootstrap.SYSTEM_USERNAME))
         assert system_user.enabled is False and system_user.role == "ADMIN"
         ring = KeyRing.load(system[0].audit_key_file)
         assert hosted_audit(system, ring, s)["valid"] is True
-    assert (system[0].checkpoint_root / "checkpoint-0000000001.json").exists()
+    assert (system[0].checkpoint_root / "checkpoint-0000000003.json").exists()
 
 
 def hosted_audit(system, ring, s):

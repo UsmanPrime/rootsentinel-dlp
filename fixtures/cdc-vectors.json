@@ -1,0 +1,292 @@
+{
+  "cases": {
+    "empty": {
+      "chunk_sha256": [],
+      "cut_points": [],
+      "input": "no bytes",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    "min_size": {
+      "chunk_sha256": [
+        "e5759ce24ec072b99c1551f9895cc90981a57219cbf07a881977c4ec9ff6fe9c"
+      ],
+      "cut_points": [
+        512
+      ],
+      "input": "counter stream, seed 'rs-cdc-gear-v1 test vector', first 512 bytes",
+      "sha256": "e5759ce24ec072b99c1551f9895cc90981a57219cbf07a881977c4ec9ff6fe9c",
+      "size": 512
+    },
+    "min_size_plus_one": {
+      "chunk_sha256": [
+        "62a684d2eaa3d073c88a0b02bbbd9610afb2fc44c4e8f498db933b208ff18975"
+      ],
+      "cut_points": [
+        513
+      ],
+      "input": "counter stream, seed 'rs-cdc-gear-v1 test vector', first 513 bytes",
+      "sha256": "62a684d2eaa3d073c88a0b02bbbd9610afb2fc44c4e8f498db933b208ff18975",
+      "size": 513
+    },
+    "one_byte": {
+      "chunk_sha256": [
+        "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+      ],
+      "cut_points": [
+        1
+      ],
+      "input": "the single byte 0x00",
+      "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+      "size": 1
+    },
+    "source_sample": {
+      "chunk_sha256": [
+        "59ade9174a2ea89480f5bb101f7c75cbfd4a523ba25fa0875abb31125296edc8",
+        "7022182c20fe07cdf0328c46a8dc9171574f5d242fb7070a2d94f53e12a16b99",
+        "a374538cd0578d725c6c3eddcd918895544218e9c592e726c5cdb5415bb2990b",
+        "4833baf50d6236228c95dce77d81f2b6ab55b28e53eb624c17830333508813be"
+      ],
+      "cut_points": [
+        1474,
+        3751,
+        5984,
+        6954
+      ],
+      "input": "app.synthetic.source_sample(), the second hosted seed asset",
+      "sha256": "80d5bd83e3aedc3f3c183f950d7e8233b13c511bb0e1202080cde6747713939e",
+      "size": 6954
+    },
+    "stream_64k": {
+      "chunk_sha256": [
+        "8859323237ad1c680af970a45f9b7f81c648b2b89ddfe8be80d953ed7bc6f8a4",
+        "33e36e021657a8acbb7187f2f69ae06b7b89f9decb55adce073eebc02a6c943e",
+        "00e64b1a5e2d713a0a6e5f10b1da71dcaddc2b8eba716641959b222e0741e245",
+        "eac7657f88652d29c9fb8a3a9bd8156b3fa3b838e3c5b723d353cfe0e02f0dfb",
+        "5f7eb9e38a413d841bb846bf58fa4b36a617c624e6081d1269fd394062cb8738",
+        "89e25e354d0526b81a44a1e45cffb623b34e9441a53a7ed8ed3ace7aa1cb8118",
+        "505480b70f8c330fa1167ec6fd05121a08d873af4b6d3aaa22e94ea2c662cc29",
+        "a1ef9fe5b285185dc50c76ca2351095a234de9b39c3bba3af1628bc0a760849e",
+        "ae18174163621a1538a2ad734f5f4213e9fdca2fb23ad616eddabf4092a40a43",
+        "ff517be6a62699461b067a47ebbbd5075d7f8bb9813fad3e4124278d788e8cf4",
+        "add0144dda3f34bb9657591a78430a6793988fc99bdcd0e9cc822bc58d50344c",
+        "ae01be239e197cd5bf7b81ce0fc786761a57566eec0981413734c489af062ffa",
+        "01ea0baa5a1d1ab0c895aec274cdb89428dde6794e59dcd64c42aa428a1db740",
+        "45a90a3897956b659fa5ff6c9119a749d42fba57bb4531eec3000acc7abe9bb1",
+        "a0199c699307c006838f148ffc3f2a2f016a56d881acc10c806c09894d1b03ef",
+        "f170271423481ca2a5a9a89c0bb5d25f70895bc0801a946d629047ee5f9c095c",
+        "dd6314efe6d4941b2cf62d84515e29c45ba8e864eb14d4a070e4feed28ec2c50",
+        "137f972669f7787c113a8ea2408e8a1c688f63cb4f0f41775a5e6b529f6c217a",
+        "c757af26ce908089e7e99c6f775443e217da31d6d9faafe27a815811d75a7bf1",
+        "b0b25f550032f69b74ff076b6ae41022b66250a5181661b0391961deb9f0168a",
+        "2750f0c11ecb45a28f77a507c92cf2eb3c09b9fb240f8cd60b3563213869abe3",
+        "3a648cb4bd8432778a2b370359d6b162d396dfbc068efad3d9080bfd41ec6118",
+        "448460bdeef0516fd0a248f86009a881de47de25fe68450e5c21aeaf76d58a9b",
+        "7636bb503fadcb03a89721088c0d4f603260ae6983d63f220e186ad2f0e82ba3",
+        "d60fb219fcd5591e39b4f34d132a4212626ee2a02f24d89c7d3d6bba4baf1968",
+        "90dc62f10a3b8ff06cc49c029afeb74d1c401a3b3453e7cc1763bb32094d49ec",
+        "b8d763628d7d595fddacabc72696af1a5255a31af891912abbaeff89463a268d"
+      ],
+      "cut_points": [
+        3326,
+        4852,
+        8316,
+        10468,
+        12556,
+        14945,
+        19578,
+        21803,
+        24704,
+        26800,
+        28888,
+        31054,
+        32524,
+        35597,
+        37645,
+        39042,
+        41712,
+        46158,
+        49650,
+        51747,
+        53641,
+        56862,
+        59033,
+        60211,
+        62321,
+        64374,
+        65536
+      ],
+      "input": "counter stream, seed 'rs-cdc-gear-v1 test vector', 65,536 bytes",
+      "sha256": "9e78b69f87823dcb993c02dd0637bc899abec39d8b19883d66fcfd7f476c1782",
+      "size": 65536
+    },
+    "stream_64k_prefixed": {
+      "chunk_sha256": [
+        "4cd77d781748b7157cb3a59f7ff1161660f8156af290305d2428cc36406603b8",
+        "33e36e021657a8acbb7187f2f69ae06b7b89f9decb55adce073eebc02a6c943e",
+        "00e64b1a5e2d713a0a6e5f10b1da71dcaddc2b8eba716641959b222e0741e245",
+        "eac7657f88652d29c9fb8a3a9bd8156b3fa3b838e3c5b723d353cfe0e02f0dfb",
+        "5f7eb9e38a413d841bb846bf58fa4b36a617c624e6081d1269fd394062cb8738",
+        "89e25e354d0526b81a44a1e45cffb623b34e9441a53a7ed8ed3ace7aa1cb8118",
+        "505480b70f8c330fa1167ec6fd05121a08d873af4b6d3aaa22e94ea2c662cc29",
+        "a1ef9fe5b285185dc50c76ca2351095a234de9b39c3bba3af1628bc0a760849e",
+        "ae18174163621a1538a2ad734f5f4213e9fdca2fb23ad616eddabf4092a40a43",
+        "ff517be6a62699461b067a47ebbbd5075d7f8bb9813fad3e4124278d788e8cf4",
+        "add0144dda3f34bb9657591a78430a6793988fc99bdcd0e9cc822bc58d50344c",
+        "ae01be239e197cd5bf7b81ce0fc786761a57566eec0981413734c489af062ffa",
+        "01ea0baa5a1d1ab0c895aec274cdb89428dde6794e59dcd64c42aa428a1db740",
+        "45a90a3897956b659fa5ff6c9119a749d42fba57bb4531eec3000acc7abe9bb1",
+        "a0199c699307c006838f148ffc3f2a2f016a56d881acc10c806c09894d1b03ef",
+        "f170271423481ca2a5a9a89c0bb5d25f70895bc0801a946d629047ee5f9c095c",
+        "dd6314efe6d4941b2cf62d84515e29c45ba8e864eb14d4a070e4feed28ec2c50",
+        "137f972669f7787c113a8ea2408e8a1c688f63cb4f0f41775a5e6b529f6c217a",
+        "c757af26ce908089e7e99c6f775443e217da31d6d9faafe27a815811d75a7bf1",
+        "b0b25f550032f69b74ff076b6ae41022b66250a5181661b0391961deb9f0168a",
+        "2750f0c11ecb45a28f77a507c92cf2eb3c09b9fb240f8cd60b3563213869abe3",
+        "3a648cb4bd8432778a2b370359d6b162d396dfbc068efad3d9080bfd41ec6118",
+        "448460bdeef0516fd0a248f86009a881de47de25fe68450e5c21aeaf76d58a9b",
+        "7636bb503fadcb03a89721088c0d4f603260ae6983d63f220e186ad2f0e82ba3",
+        "d60fb219fcd5591e39b4f34d132a4212626ee2a02f24d89c7d3d6bba4baf1968",
+        "90dc62f10a3b8ff06cc49c029afeb74d1c401a3b3453e7cc1763bb32094d49ec",
+        "b8d763628d7d595fddacabc72696af1a5255a31af891912abbaeff89463a268d"
+      ],
+      "cut_points": [
+        3327,
+        4853,
+        8317,
+        10469,
+        12557,
+        14946,
+        19579,
+        21804,
+        24705,
+        26801,
+        28889,
+        31055,
+        32525,
+        35598,
+        37646,
+        39043,
+        41713,
+        46159,
+        49651,
+        51748,
+        53642,
+        56863,
+        59034,
+        60212,
+        62322,
+        64375,
+        65537
+      ],
+      "input": "the byte 0x21 followed by stream_64k",
+      "sha256": "3df020deec58c1767c262014d38dd6814e1a108bb3d5295e30c49efbefe2daba",
+      "size": 65537
+    },
+    "stream_64k_without_first_100": {
+      "chunk_sha256": [
+        "fdd4fea704ed2c58b42a8b2d0be597619573590e9006ea6f5b3ecb2f4766489e",
+        "33e36e021657a8acbb7187f2f69ae06b7b89f9decb55adce073eebc02a6c943e",
+        "00e64b1a5e2d713a0a6e5f10b1da71dcaddc2b8eba716641959b222e0741e245",
+        "eac7657f88652d29c9fb8a3a9bd8156b3fa3b838e3c5b723d353cfe0e02f0dfb",
+        "5f7eb9e38a413d841bb846bf58fa4b36a617c624e6081d1269fd394062cb8738",
+        "89e25e354d0526b81a44a1e45cffb623b34e9441a53a7ed8ed3ace7aa1cb8118",
+        "505480b70f8c330fa1167ec6fd05121a08d873af4b6d3aaa22e94ea2c662cc29",
+        "a1ef9fe5b285185dc50c76ca2351095a234de9b39c3bba3af1628bc0a760849e",
+        "ae18174163621a1538a2ad734f5f4213e9fdca2fb23ad616eddabf4092a40a43",
+        "ff517be6a62699461b067a47ebbbd5075d7f8bb9813fad3e4124278d788e8cf4",
+        "add0144dda3f34bb9657591a78430a6793988fc99bdcd0e9cc822bc58d50344c",
+        "ae01be239e197cd5bf7b81ce0fc786761a57566eec0981413734c489af062ffa",
+        "01ea0baa5a1d1ab0c895aec274cdb89428dde6794e59dcd64c42aa428a1db740",
+        "45a90a3897956b659fa5ff6c9119a749d42fba57bb4531eec3000acc7abe9bb1",
+        "a0199c699307c006838f148ffc3f2a2f016a56d881acc10c806c09894d1b03ef",
+        "f170271423481ca2a5a9a89c0bb5d25f70895bc0801a946d629047ee5f9c095c",
+        "dd6314efe6d4941b2cf62d84515e29c45ba8e864eb14d4a070e4feed28ec2c50",
+        "137f972669f7787c113a8ea2408e8a1c688f63cb4f0f41775a5e6b529f6c217a",
+        "c757af26ce908089e7e99c6f775443e217da31d6d9faafe27a815811d75a7bf1",
+        "b0b25f550032f69b74ff076b6ae41022b66250a5181661b0391961deb9f0168a",
+        "2750f0c11ecb45a28f77a507c92cf2eb3c09b9fb240f8cd60b3563213869abe3",
+        "3a648cb4bd8432778a2b370359d6b162d396dfbc068efad3d9080bfd41ec6118",
+        "448460bdeef0516fd0a248f86009a881de47de25fe68450e5c21aeaf76d58a9b",
+        "7636bb503fadcb03a89721088c0d4f603260ae6983d63f220e186ad2f0e82ba3",
+        "d60fb219fcd5591e39b4f34d132a4212626ee2a02f24d89c7d3d6bba4baf1968",
+        "90dc62f10a3b8ff06cc49c029afeb74d1c401a3b3453e7cc1763bb32094d49ec",
+        "b8d763628d7d595fddacabc72696af1a5255a31af891912abbaeff89463a268d"
+      ],
+      "cut_points": [
+        3226,
+        4752,
+        8216,
+        10368,
+        12456,
+        14845,
+        19478,
+        21703,
+        24604,
+        26700,
+        28788,
+        30954,
+        32424,
+        35497,
+        37545,
+        38942,
+        41612,
+        46058,
+        49550,
+        51647,
+        53541,
+        56762,
+        58933,
+        60111,
+        62221,
+        64274,
+        65436
+      ],
+      "input": "stream_64k without its first 100 bytes",
+      "sha256": "7f0720d15884f97f9f5291989a102cc69119ce11933aea6f5ef0b59027c10edb",
+      "size": 65436
+    },
+    "zeros_20000": {
+      "chunk_sha256": [
+        "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+        "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+        "57ad9ed0b75c4a91fb12552789bc2d0e1e680525f6b427215f7397d2e1ee73f7"
+      ],
+      "cut_points": [
+        8192,
+        16384,
+        20000
+      ],
+      "input": "20,000 bytes 0x00 (no cut point: maximum-size chunks)",
+      "sha256": "28b4f41a7f3ee6d8cc87272db6e09c6d3566551fd4d18702b041a21658272a85",
+      "size": 20000
+    }
+  },
+  "gear": {
+    "derivation": "SHA-256(domain || u32be(counter)), counter 0..63; each digest is four big-endian 64-bit values",
+    "domain": "RootSentinel rs-cdc-gear-v1 gear table",
+    "first": [
+      "0x7bf93287f471c4d9",
+      "0x75b0cd8b86898d95",
+      "0x9be55bb355c0e91d",
+      "0xb6c385d2fa7cf77f"
+    ],
+    "last": [
+      "0x7e120ba5c71849de",
+      "0xfac7019def8dbe91",
+      "0xe0cffbe6e8fff688",
+      "0x6a0ae301002d122c"
+    ],
+    "table_sha256": "6a80b73d855e1aaaba9dc9b54d5e9bd4047e1d2b1ea9803fb0e4b33ee28c1d13"
+  },
+  "parameters": {
+    "mask_l": "0x0000d90003500000",
+    "mask_s": "0x0000d93003530000",
+    "max_size": 8192,
+    "min_size": 512,
+    "normal_size": 2048,
+    "normalization_level": 2
+  },
+  "profile_id": "rs-cdc-gear-v1",
+  "profile_version": 1
+}

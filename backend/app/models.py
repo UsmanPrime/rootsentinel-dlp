@@ -37,6 +37,10 @@ class PolicyVersion(Base):
     block_enabled: Mapped[bool] = mapped_column(Boolean)
     actor_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=now)
+    # Which rule set evaluates this policy (policy.RULE_SETS) and, for rs-policy-v2, the matched-byte threshold
+    # of the content-defined profile. Both are validated by policy.active_policy, which fails closed.
+    rule_set: Mapped[str] = mapped_column(String(16), default="rs-policy-v1", server_default="rs-policy-v1")
+    cdc_threshold: Mapped[int | None] = mapped_column(Integer)
     __table_args__ = (CheckConstraint("threshold BETWEEN 1 AND 10485760", name="ck_policy_threshold"),)
 
 
@@ -101,6 +105,19 @@ class AssetChunk(Base):
     )
 
 
+class AssetCdcChunk(Base):
+    """Chunks of an asset version under rs-cdc-gear-v1. Versions registered before this profile have none."""
+    __tablename__ = "asset_cdc_chunks"
+    version_id: Mapped[str] = mapped_column(ForeignKey("asset_versions.id"), primary_key=True)
+    offset: Mapped[int] = mapped_column(Integer, primary_key=True)
+    length: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    __table_args__ = (
+        Index("ix_cdc_match", "sha256"),
+        CheckConstraint('"offset" >= 0 AND "offset" < 10485760 AND length BETWEEN 1 AND 8192', name="ck_cdc_chunk_bounds"),
+    )
+
+
 class ScanEvaluation(Base):
     __tablename__ = "scan_evaluations"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
@@ -111,6 +128,9 @@ class ScanEvaluation(Base):
     registry_revision: Mapped[int] = mapped_column(Integer)
     policy_id: Mapped[str] = mapped_column(ForeignKey("policy_versions.id"))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=now, index=True)
+    # Evidence of every evaluated profile other than rs-fixed-sha256-v1 (whose evidence is the matching_evidence
+    # rows). NULL when the policy evaluated the fixed profile only, which is every scan before migration 0005.
+    profiles: Mapped[list | None] = mapped_column(JSON)
 
 
 class MatchEvidence(Base):

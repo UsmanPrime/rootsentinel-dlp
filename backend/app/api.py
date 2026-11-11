@@ -29,9 +29,10 @@ from .registry import asset_view, manifest_for, register, retire, version_finger
 from .scans import get_scan, run_scan
 from .schemas import (
     AssetPage, AssetView, AuthView, ErrorView, IntegrityInput, IntegrityView, Label,
-    LoginInput, PolicyInput, PolicyPage, PolicyView, ProofView, ScanPage, ScanSummary,
+    LoginInput, PolicyInput, PolicyPage, PolicyView, ProfileView, ProofView, ScanPage, ScanSummary,
     ScanView, UserView, VersionView, VersionSummary,
 )
+from . import profiles
 from .settings import Settings
 from .transfers import Gateway
 from .gateway_api import install_routes
@@ -442,8 +443,9 @@ def create_app(settings: Settings | None = None):
         actor.require("ADMIN", "ANALYST")
         with db.transaction() as s:
             versions = s.scalars(select(AssetVersion).where(AssetVersion.asset_id == str(asset_id)).order_by(AssetVersion.number.desc()).limit(limit).offset(offset)).all()
-            return [VersionSummary(**{k: getattr(v, k) for k in VersionSummary.model_fields if k != "manifest"},
-                                   manifest=manifest_for(v).to_dict()) for v in versions]
+            carried = profiles.version_profiles(s, versions)
+            return [VersionSummary(**{k: getattr(v, k) for k in VersionSummary.model_fields if k not in {"manifest", "profiles"}},
+                                   manifest=manifest_for(v).to_dict(), profiles=carried[v.id]) for v in versions]
 
     @app.get("/api/v1/assets/{asset_id}/versions/{version_id}", response_model=VersionView)
     def version(asset_id: UUID, version_id: UUID, actor: Actor):
@@ -473,6 +475,11 @@ def create_app(settings: Settings | None = None):
         with db.transaction() as s:
             _, fingerprint = version_fingerprint(s, body.asset_id, body.version_id)
             return IntegrityView(valid=verify_proof(body.proof, fingerprint.manifest))
+
+    @app.get("/api/v1/detection/profiles", response_model=list[ProfileView])
+    def detection_profiles(actor: Actor):
+        """The registered detection profiles and their published parameters. Constants: no database call."""
+        return [profile.view() for profile in profiles.registered()]
 
     @app.get("/api/v1/policies/active", response_model=PolicyView)
     def policy(actor: Actor):

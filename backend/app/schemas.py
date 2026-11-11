@@ -29,10 +29,17 @@ class AuthView(Schema):
     csrf_token: str
 
 
+RuleSet = Literal["rs-policy-v1", "rs-policy-v2"]
+
+
 class PolicyInput(Schema):
     threshold: int = Field(default=1024, ge=1, le=10485760, strict=True)
     block_enabled: bool = Field(default=True, strict=True)
     expected_version: str
+    # Omitted: the new version keeps the rule set of the policy it replaces.
+    rule_set: RuleSet | None = None
+    # Only with rs-policy-v2. Omitted: the previous value, or the documented default.
+    cdc_threshold: int | None = Field(default=None, ge=1, le=10485760, strict=True)
 
 
 class PolicyView(Schema):
@@ -42,6 +49,15 @@ class PolicyView(Schema):
     block_enabled: bool
     actor_id: str | None
     created_at: datetime
+    rule_set: str = "rs-policy-v1"
+    cdc_threshold: int | None = None
+
+
+class ProfileView(Schema):
+    id: str
+    version: int
+    summary: str
+    parameters: dict[str, int | str]
 
 
 class ManifestView(Schema):
@@ -68,6 +84,13 @@ class AssetView(Schema):
     created_at: datetime
 
 
+class VersionProfile(Schema):
+    """Whether one asset version carries fingerprints of one detection profile, and how many chunks."""
+    profile_id: str
+    fingerprinted: bool
+    chunk_count: int
+
+
 class VersionSummary(Schema):
     id: str
     asset_id: str
@@ -76,6 +99,7 @@ class VersionSummary(Schema):
     actor_id: str
     created_at: datetime
     manifest: ManifestView
+    profiles: list[VersionProfile] = []
 
 
 class VersionView(VersionSummary):
@@ -123,10 +147,30 @@ class MatchView(Schema):
     blocks: list[BlockEvidence]
 
 
+class ProfileMatch(Schema):
+    """What one profile found for one protected asset version. Intervals are merged half-open byte runs of the
+    submitted file; matched_chunks counts the distinct submitted chunks of that profile that matched."""
+    asset_id: str
+    version_id: str
+    matched_bytes: int
+    matched_chunks: int
+    coverage: Coverage
+    intervals: list[tuple[int, int]]
+
+
+class ProfileEvidence(Schema):
+    profile_id: str
+    chunk_count: int
+    matches: list[ProfileMatch]
+
+
 class DetectionView(Schema):
     manifest: ManifestView
     registry_revision: int
+    # Evidence of rs-fixed-sha256-v1, unchanged.
     matches: list[MatchView]
+    # One entry per profile the active policy evaluated, the fixed profile first.
+    profiles: list[ProfileEvidence] = []
 
 
 class DecisionView(Schema):

@@ -358,16 +358,24 @@ def test_response_disconnect_and_send_failure():
     asyncio.run(run(True)); asyncio.run(run(False))
 
 
-def test_upgrade_phase02_preserves_existing_history(system):
+def test_upgrade_phase02_preserves_existing_history(system, monkeypatch):
     from alembic import command
-    from app.registry import register as register_service
+    from app import profiles
+    from app.registry import register as register_service, version_view
     from app.models import AssetVersion
     settings, db, actors, cfg = system
     command.downgrade(cfg, "0001")
-    with db.transaction() as s: version = register_service(s, actors["admin"], "Upgrade preserved", PROTECTED)
+    # A registration made on the phase 02 schema: only the fixed profile existed, so nothing else is written.
+    with monkeypatch.context() as phase02:
+        phase02.setattr(profiles, "store_additional", lambda *_: None)
+        phase02.setattr(profiles, "version_profiles", lambda s, versions: {v.id: [] for v in versions})
+        with db.transaction() as s: version = register_service(s, actors["admin"], "Upgrade preserved", PROTECTED)
     command.upgrade(cfg, "head")
     with db.transaction() as s:
         assert s.get(AssetVersion, version.id).file_sha256 == sha256(PROTECTED).hexdigest()
+        # The upgrade adds no fingerprints: the old version keeps only the fixed profile.
+        assert [(p.profile_id, p.fingerprinted) for p in version_view(s, version.asset_id, version.id).profiles] == [
+            ("rs-fixed-sha256-v1", True), ("rs-cdc-gear-v1", False)]
 
 
 def test_tampered_database_audit_cannot_release(client, login):

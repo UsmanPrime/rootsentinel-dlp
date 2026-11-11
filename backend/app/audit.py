@@ -27,6 +27,7 @@ KINDS = {
     "TRANSFER_EXPIRED", "TRANSFER_STALE", "RELEASE_ATTEMPT", "RELEASE_DENIED",
     "RELEASE_STARTED", "STREAM_FINISHED", "DELIVERY_UNKNOWN", "INCIDENT_CREATED",
     "INCIDENT_UPDATED", "EVIDENCE_EXPORTED", "AUDIT_VERIFIED", "CHECKPOINT_CREATED",
+    "ASSET_PROFILE_ADDED",
 }
 DETAILS = {"expires", "scan_id", "incident_id", "policy_id", "registry_revision", "reason", "state", "digest", "size", "revision", "note_digest", "resolution_digest"}
 

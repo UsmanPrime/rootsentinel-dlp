@@ -1,6 +1,7 @@
 """Registry units of work. Immutable versions, explicit concurrency preconditions."""
 from sqlalchemy import select, update
 
+from . import profiles
 from .crypto import Chunk, Fingerprint, Manifest, fingerprint_bytes
 from .errors import DomainError, Indeterminate
 from .models import Asset, AssetChunk, AssetVersion, RegistryRevision, RegistryState
@@ -39,7 +40,8 @@ def version_view(s, asset_id, version_id):
     return VersionView(id=version.id, asset_id=asset_id, number=version.number,
                        registry_revision=version.registry_revision, actor_id=version.actor_id,
                        created_at=version.created_at, manifest=fp.manifest.to_dict(),
-                       chunks=[c.to_dict() for c in fp.chunks])
+                       chunks=[c.to_dict() for c in fp.chunks],
+                       profiles=profiles.version_profiles(s, [version])[version.id])
 
 
 def register(s, principal, label: str, data: bytes, asset_id=None, expected_version=None):
@@ -75,8 +77,35 @@ def register(s, principal, label: str, data: bytes, asset_id=None, expected_vers
     s.add(version)
     s.flush()
     s.add_all([AssetChunk(version_id=version.id, index=c.index, length=c.length, sha256=c.sha256) for c in fp.chunks])
+    # Every other registered profile fingerprints the same bytes now: they are not kept after registration.
+    profiles.store_additional(s, version.id, data)
     s.flush()
     return version_view(s, asset.id, version.id)
+
+
+def add_missing_profiles(s, principal, asset_id, data: bytes):
+    """Fingerprint the CURRENT version of an asset with the profiles it lacks, from bytes the caller still holds.
+
+    The bytes must be the registered ones (size and SHA-256 are compared with the stored manifest). Only rows of
+    the missing profiles are inserted; the version row and its fixed-profile rows are not touched. The registry
+    revision advances, so approvals issued before the new fingerprints existed become stale. Returns the new
+    revision, or None when nothing was missing."""
+    principal.require("ADMIN")
+    fp = fingerprint_bytes(data)
+    state = lock_state(s)
+    asset = s.get(Asset, asset_id)
+    if asset is None:
+        raise DomainError("NOT_FOUND", 404)
+    version = s.scalar(select(AssetVersion).where(AssetVersion.asset_id == asset_id, AssetVersion.number == asset.current_version))
+    if version is None or (version.file_size, version.file_sha256) != (fp.manifest.file_size, fp.manifest.file_sha256):
+        raise DomainError("ASSET_CONTENT_MISMATCH", 409)
+    if asset.retired or all(p.fingerprinted for p in profiles.version_profiles(s, [version])[version.id]):
+        return None
+    profiles.store_additional(s, version.id, data)
+    state.revision += 1
+    s.add(RegistryRevision(number=state.revision, actor_id=principal.id, asset_id=asset.id, action="PROFILE_ADDED"))
+    s.flush()
+    return state.revision
 
 
 def retire(s, principal, asset_id):

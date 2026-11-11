@@ -14,6 +14,7 @@ Run once per container start, after migrations and before the server:
 * It prints counts only. It never prints usernames, hashes, paths of secrets or audit material.
 """
 import argparse
+from hashlib import sha256
 import json
 from pathlib import Path
 import secrets
@@ -30,15 +31,20 @@ from .transparency import SigningKeys
 from .auth import HASHER, Principal
 from .db import Database, now
 from .errors import DomainError
-from .models import Asset, SessionRecord, User
+from . import profiles
+from .models import Asset, AssetVersion, PolicyVersion, RegistryState, SessionRecord, User
+from .policy import RULE_SET_V1, RULE_SET_V2, active_policy, new_policy
 from .private_files import read_private
-from .registry import register
+from .registry import add_missing_profiles, lock_state, register
 from .settings import Settings
+from .synthetic import protected_sample, source_sample
 
 SYSTEM_USERNAME = "system-bootstrap"
-# Synthetic only. The same bytes are the server-side "protected" transfer fixture, so the hosted
-# smoke test and the Transfers page produce a real BLOCK. Operators can register more as ADMIN.
-SEEDS = {"synthetic-protected-sample": b"SYNTHETIC-PROTECTED-" * 128}
+# Synthetic only. The first seed's bytes are the server-side "protected" transfer fixture, so the hosted
+# smoke test and the Transfers page produce a real BLOCK. The second is source-shaped text, the same bytes
+# as the interface's "source" fixture, so shifted and inserted copies of it show the content-defined
+# profile. Operators can register more as ADMIN.
+SEEDS = {"synthetic-protected-sample": protected_sample(), "synthetic-source-sample": source_sample()}
 MAX_ACCOUNTS = 50
 
 Name = Annotated[str, StringConstraints(min_length=3, max_length=64, pattern=r"^[a-z0-9][a-z0-9_.-]*$")]
@@ -106,11 +112,7 @@ def apply_accounts(db: Database, accounts: AccountsFile) -> dict:
     return counts
 
 
-def seed_assets(db: Database, audit: AuditService) -> dict:
-    with db.transaction() as s:
-        missing = [label for label in SEEDS if s.scalar(select(Asset.id).where(Asset.label == label)) is None]
-    if not missing:
-        return {"seeded": 0, "existing": len(SEEDS)}
+def system_actor(db: Database) -> Principal:
     with db.transaction() as s:
         system = s.scalar(select(User).where(User.username == SYSTEM_USERNAME))
         if system is None:
@@ -118,12 +120,68 @@ def seed_assets(db: Database, audit: AuditService) -> dict:
             system = User(username=SYSTEM_USERNAME, role="ADMIN", password_hash=HASHER.hash(secrets.token_urlsafe(32)), enabled=False)
             s.add(system)
             s.flush()
-        actor = Principal(system.id, system.username, "ADMIN", "bootstrap")
+        return Principal(system.id, system.username, "ADMIN", "bootstrap")
+
+
+def seed_assets(db: Database, audit: AuditService) -> dict:
+    with db.transaction() as s:
+        missing = [label for label in SEEDS if s.scalar(select(Asset.id).where(Asset.label == label)) is None]
+    if not missing:
+        return {"seeded": 0, "existing": len(SEEDS)}
+    actor = system_actor(db)
     for label in missing:
         with db.transaction() as s:
             result = register(s, actor, label, SEEDS[label])
             audit.append(s, "ASSET_REGISTERED", actor.id, result.asset_id, registry_revision=result.registry_revision)
     return {"seeded": len(missing), "existing": len(SEEDS) - len(missing)}
+
+
+def rebuild_seed_profiles(db: Database, audit: AuditService) -> int:
+    """Give seed assets registered before a profile existed that profile's fingerprints.
+
+    Possible only for seeds: their bytes are constants of this module, while the bytes of every other asset
+    are gone after registration. A seed whose current version is no longer the seed bytes is left alone."""
+    added = 0
+    for label, data in SEEDS.items():
+        with db.transaction() as s:
+            asset = s.scalar(select(Asset).where(Asset.label == label))
+            version = asset and s.scalar(select(AssetVersion).where(
+                AssetVersion.asset_id == asset.id, AssetVersion.number == asset.current_version))
+            stale = bool(version) and not asset.retired and version.file_sha256 == sha256(data).hexdigest() \
+                and not all(p.fingerprinted for p in profiles.version_profiles(s, [version])[version.id])
+            asset_id = asset.id if stale else None
+        if asset_id is None:
+            continue
+        actor = system_actor(db)
+        with db.transaction() as s:
+            revision = add_missing_profiles(s, actor, asset_id, data)
+            if revision is not None:
+                audit.append(s, "ASSET_PROFILE_ADDED", actor.id, asset_id, registry_revision=revision)
+                added += 1
+    return added
+
+
+def activate_rule_set(db: Database, audit: AuditService) -> bool:
+    """Make rs-policy-v2 the active rule set, once: only while the migration's own policy 1 is still active.
+
+    Any later policy was written by an administrator (or by an earlier run of this function) and is never
+    overridden here, so an administrator's choice of rule set survives every restart."""
+    with db.transaction() as s:
+        state = s.get(RegistryState, 1)
+        untouched = state is not None and (policy := s.get(PolicyVersion, state.policy_id)) is not None \
+            and policy.number == 1 and policy.actor_id is None and policy.rule_set == RULE_SET_V1
+    if not untouched:
+        return False
+    actor = system_actor(db)
+    with db.transaction() as s:
+        state = lock_state(s)
+        previous = active_policy(s, state)
+        if previous.number != 1 or previous.rule_set != RULE_SET_V1:
+            return False
+        new = new_policy(s, state, previous, actor.id, threshold=previous.threshold,
+                         block_enabled=previous.block_enabled, rule_set=RULE_SET_V2)
+        audit.append(s, "POLICY_CHANGED", actor.id, new.id, policy_id=new.id)
+    return True
 
 
 def anchor_checkpoint(db: Database, audit: AuditService):
@@ -156,6 +214,8 @@ def main(argv=None) -> int:
             print("accounts: no accounts file given; none changed")
         seeds = seed_assets(db, audit)
         print(f"assets: seeded={seeds['seeded']} existing={seeds['existing']}")
+        print(f"profiles: seed assets given missing fingerprints={rebuild_seed_profiles(db, audit)}")
+        print(f"policy: rule set {RULE_SET_V2} {'activated' if activate_rule_set(db, audit) else 'not changed'}")
         anchor_checkpoint(db, audit)
         print("checkpoint: anchored for this container run (checkpoints are not durable across restarts)")
         return 0

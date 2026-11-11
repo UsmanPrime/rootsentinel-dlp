@@ -399,3 +399,50 @@ def test_an_idle_hour_with_a_populated_transparency_log_makes_no_database_call(s
                 assert client.get("/health").status_code == 200
             assert len(ticks) >= 60
             assert calls.statements == [] and calls.checkouts == 0
+
+# ---------------------------------------------------------------------------------------------- detection profiles
+def test_an_idle_hour_under_rule_set_v2_with_content_defined_fingerprints_makes_no_database_call(system, credentials, monkeypatch):
+    # The profile registry is constants in memory and the chunk rows are read only by a scan. After a registration,
+    # an activation of rs-policy-v2 and a blocked shifted copy, the idle hour is as silent as before.
+    from app.synthetic import source_sample
+    monkeypatch.setattr(api_module, "MAINTENANCE_SECONDS", 0.002)
+    app = create_app(system[0])
+    ticks = count_ticks(app.state.gateway, monkeypatch)
+    octet = {"Content-Type": "application/octet-stream"}
+    with TestClient(app, base_url=LOCAL, raise_server_exceptions=False) as client:
+        client.headers["origin"] = system[0].origin
+        result = client.post("/api/v1/auth/login", json={"username": "admin", "password": credentials[0]})
+        client.headers["x-csrf-token"] = result.json()["csrf_token"]
+        version = client.post("/api/v1/assets?label=Source", content=source_sample(), headers=octet).json()
+        assert [p["fingerprinted"] for p in version["profiles"]] == [True, True]
+        active = client.get("/api/v1/policies/active").json()
+        assert client.post("/api/v1/policies", json={"expected_version": active["id"], "rule_set": "rs-policy-v2"}).status_code == 201
+        blocked = submit(client, data=b"!" + source_sample()).json()
+        assert blocked["state"] == "BLOCKED" and blocked["reason"] == "CDC_THRESHOLD_MET"
+        assert app.state.gateway.next_due is None and not app.state.gateway.store.pending()
+        start = len(ticks)
+        with DatabaseCalls(app.state.db.engine) as calls:
+            for minute in range(10, 61, 10):
+                assert wait_for(lambda: len(ticks) >= start + minute), "the maintenance loop stopped"
+                assert client.get("/health").status_code == 200
+            assert len(ticks) >= start + 60
+            assert calls.statements == [] and calls.checkouts == 0
+
+
+def test_listing_the_profiles_reads_no_table(client, login):
+    # The session check is the only statement source: the profile list itself is built from constants.
+    login(client, "employee")
+    with DatabaseCalls(client.app.state.db.engine) as before:
+        assert client.get("/api/v1/auth/me").status_code == 200
+    with DatabaseCalls(client.app.state.db.engine) as calls:
+        assert client.get("/api/v1/detection/profiles").status_code == 200
+    assert len(calls.statements) == len(before.statements) and calls.writes == []
+    assert not [s for s in calls.statements if "asset" in s or "policy" in s]
+
+
+def test_startup_reads_no_fingerprint_rows(system):
+    app = create_app(system[0])
+    with DatabaseCalls(app.state.db.engine) as calls:
+        with TestClient(app, base_url=LOCAL):
+            pass
+    assert calls.statements and not [s for s in calls.statements if "asset_cdc_chunks" in s or "asset_chunks" in s]

@@ -71,6 +71,7 @@ export type DecisionView = {
 export type DetectionView = {
   "manifest": ManifestView;
   "matches": Array<MatchView>;
+  "profiles"?: Array<ProfileEvidence>;
   "registry_revision": number;
 };
 
@@ -187,7 +188,9 @@ export type Overview = {
 
 export type PolicyInput = {
   "block_enabled"?: boolean;
+  "cdc_threshold"?: (number | null);
   "expected_version": string;
+  "rule_set"?: ("rs-policy-v1" | "rs-policy-v2" | null);
   "threshold"?: number;
 };
 
@@ -200,10 +203,34 @@ export type PolicyPage = {
 export type PolicyView = {
   "actor_id": (string | null);
   "block_enabled": boolean;
+  "cdc_threshold"?: (number | null);
   "created_at": string;
   "id": string;
   "number": number;
+  "rule_set"?: string;
   "threshold": number;
+};
+
+export type ProfileEvidence = {
+  "chunk_count": number;
+  "matches": Array<ProfileMatch>;
+  "profile_id": string;
+};
+
+export type ProfileMatch = {
+  "asset_id": string;
+  "coverage": Coverage;
+  "intervals": Array<[number, number]>;
+  "matched_bytes": number;
+  "matched_chunks": number;
+  "version_id": string;
+};
+
+export type ProfileView = {
+  "id": string;
+  "parameters": Record<string, (number | string)>;
+  "summary": string;
+  "version": number;
 };
 
 export type ProofView = {
@@ -321,6 +348,12 @@ export type UserView = {
   "username": string;
 };
 
+export type VersionProfile = {
+  "chunk_count": number;
+  "fingerprinted": boolean;
+  "profile_id": string;
+};
+
 export type VersionSummary = {
   "actor_id": string;
   "asset_id": string;
@@ -328,6 +361,7 @@ export type VersionSummary = {
   "id": string;
   "manifest": ManifestView;
   "number": number;
+  "profiles"?: Array<VersionProfile>;
   "registry_revision": number;
 };
 
@@ -339,6 +373,7 @@ export type VersionView = {
   "id": string;
   "manifest": ManifestView;
   "number": number;
+  "profiles"?: Array<VersionProfile>;
   "registry_revision": number;
 };
 

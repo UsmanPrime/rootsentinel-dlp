@@ -19,10 +19,11 @@ def test_migration_indexes_constraints_and_repeatability(system):
         "registry_revisions", "registry_state", "policy_versions", "scan_evaluations",
         "matching_evidence", "policy_decisions",
         "transfers", "release_attempts", "incidents", "incident_history", "audit_heads", "audit_events",
-        "transparency_heads",
+        "transparency_heads", "asset_cdc_chunks",
     }
     assert "ix_exact_match" in {i["name"] for i in inspector.get_indexes("asset_versions")}
     assert "ix_block_match" in {i["name"] for i in inspector.get_indexes("asset_chunks")}
+    assert [(i["name"], i["column_names"]) for i in inspector.get_indexes("asset_cdc_chunks")] == [("ix_cdc_match", ["sha256"])]
     assert inspector.get_foreign_keys("asset_versions")
     with db.transaction() as s:
         assert s.get(RegistryState, 1).revision == 0
