@@ -87,8 +87,14 @@ allowed files without the agent.
 * **Exact and partial matching.** The gateway hashes the whole file and each fixed 1 KiB block with SHA-256 and looks both up
   in an indexed registry. An exact file match always blocks. Otherwise the default policy blocks once 1,024 bytes match any one
   protected asset. See the [detection spec](docs/detection-spec.md).
+* **Content defined chunks for shifted copies.** A second detection profile, `rs-cdc-gear-v1`, cuts files where their content
+  says so (FastCDC with a gear table derived from SHA-256), so a copy with bytes added or removed in front still shares
+  chunks with the original. Policy rule set `rs-policy-v2` evaluates both profiles and blocks at 2,048 shared bytes by
+  default; rule set `rs-policy-v1` keeps the earlier behaviour unchanged. The hosted demo starts on v2; an administrator
+  chooses the rule set on the Policies page. See the [policy spec](docs/policy-spec.md).
 * **Verdicts that explain themselves.** Each transfer shows the rule that decided it, every matching asset with its matched
-  bytes, matched blocks and share of the file, and the policy version and threshold it was judged by.
+  bytes, matched chunks and share of the file for each detection profile, and the policy version, rule set and thresholds
+  it was judged by.
 * **Staging agent.** A standard library Python process watches one folder, uploads each new file and writes to the outbound
   folder only after an ALLOW and a release whose SHA-256 matches its own reading of the file. A journal flushed to disk lets it
   recover after a crash without losing or duplicating a file. It refuses links, junctions, nested folders and special files.
@@ -177,17 +183,18 @@ reads every route from the OpenAPI document and calls it as an anonymous visitor
 and without the CSRF token, from a foreign Origin and with a foreign Host. Other tests cover replayed, expired and stale
 releases, a dozen releases racing for one transfer, tampered audit events and checkpoints, upload size boundaries, refused
 file names and content types, links and special files in the staging folder, and crashes at every agent step. The known
-detection misses (shifted, re-encoded and compressed copies) are tests that assert the miss.
+detection misses (shifted copies under rule set v1, re-encoded and compressed copies under both) are tests that assert the
+miss, next to tests that the same shifted and inserted copies block under rule set v2.
 
 A local Windows run gave:
 
 | Suite | Result |
 |---|---|
-| Backend (`pytest`) | 523 passed, 1 skipped (symbolic links need a privilege the account lacks); 93% branch coverage |
+| Backend (`pytest`) | 809 passed, 2 skipped (cases that need a privilege or platform the account lacks); 94% branch coverage |
 | Staging agent (`pytest`) | 104 passed, 3 skipped (Linux only cases); 86% branch coverage |
 | Agent end to end demo | 13 of 13 checks passed |
-| Frontend (`vitest`) | 37 tests in 5 files passed; type check and format check clean |
-| Browser suite (Playwright, real API, enforced CSP) | 32 journey checks and 8 failure path checks passed; axe found no violation on 17 pages; no page overflows at 320 to 1920 px |
+| Frontend (`vitest`) | 55 tests in 7 files passed; type check and format check clean |
+| Browser suite (Playwright, real API, enforced CSP) | 39 journey checks and 8 failure path checks passed; axe found no violation on 22 pages; no page overflows at 320 to 1920 px |
 | Accessibility audit | axe found no violation in 96 page and width checks; Lighthouse accessibility and best practices 100 on 8 main routes |
 
 GitHub Actions runs 9 jobs on every push, and all 9 must pass before `main` can change:
@@ -209,9 +216,14 @@ zizmor) were run for the verification evidence; [docs/testing.md](docs/testing.m
 
 * **Only the gateway and the staging folder are covered.** USB drives, email, the clipboard, cloud sync and other applications
   are not monitored. A file copied anywhere other than the staging folder is not seen.
-* **Fixed blocks miss shifted or re-encoded copies.** A one byte insertion at the start, CRLF or UTF-16 conversion,
-  compression or base64 can change every block hash. The tests assert these misses. Content defined chunking, which would
-  catch shifted copies, is planned.
+* **Re-encoded copies are missed.** CRLF or UTF-16 conversion, compression and base64 change the bytes, so neither detection
+  profile finds them. The tests assert these misses. A normalising winnowing profile is planned.
+* **Shifted copies are found only under rule set `rs-policy-v2`, and not always.** Under `rs-policy-v1` a one byte insertion at
+  the start still hides a file, and the tests still assert that. Under v2 the miss is closed for content that has cut
+  points. Repetitive content without one, files of very few chunks, and asset versions registered before the profile
+  existed (raw bytes are not stored, so they need a new version) can still be missed.
+* **Content defined scanning costs CPU.** The chunker is pure Python: about 1.7 seconds for a 1 MiB upload on 0.15 CPU, against
+  0.4 seconds or less for inputs up to 64 KiB.
 * **One worker.** Rate limits, processing slots and audit ordering assume a single process.
 * **Free tier hosting.** The service sleeps when idle, so the first request waits for a cold start. File checkpoints live on the
   container's disk and are lost on every restart. Signed tree heads are in the database and survive, but a rollback that removes

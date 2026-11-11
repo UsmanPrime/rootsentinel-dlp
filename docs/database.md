@@ -1,6 +1,6 @@
 # Database schema and migrations
 
-SQLAlchemy 2.0 maps eighteen application tables (eleven in `backend/app/models.py`,
+SQLAlchemy 2.0 maps nineteen application tables (twelve in `backend/app/models.py`,
 seven in `backend/app/gateway_models.py`); Alembic adds its version table.
 Identifiers are UUID strings except the singleton registry state's fixed key.
 UTC timestamps are timezone-aware in Python/PostgreSQL; SQLite stores UTC values
@@ -13,10 +13,11 @@ and the type adapter restores timezone information on reads.
 | assets | Unique label, current version number, retirement flag |
 | asset_versions | Immutable manifest fields; unique asset/version and asset/content; actor and revision FKs |
 | asset_chunks | Version/index composite primary key, bounded index/length, digest index |
+| asset_cdc_chunks | Content-defined chunks of a version: version/offset composite primary key, bounded offset/length, digest index (migration 0005) |
 | registry_revisions | Append-only number, asset, actor, action and timestamp |
 | registry_state | Singleton revision counter and active policy FK |
-| policy_versions | Immutable sequence and validated threshold |
-| scan_evaluations | Actor, candidate manifest, snapshot identity, registry revision and policy FK |
+| policy_versions | Immutable sequence, validated threshold, rule set and content-defined threshold |
+| scan_evaluations | Actor, candidate manifest, snapshot identity, registry revision, policy FK and the evidence of profiles other than the fixed one |
 | matching_evidence | One row per scan/version, grouped references and exact rational coverage in JSON |
 | policy_decisions | One immutable decision per scan, reason and sorted qualifying versions |
 
@@ -27,6 +28,7 @@ erDiagram
     assets ||--o{ asset_versions : versions
     assets ||--o{ registry_revisions : changes
     asset_versions ||--o{ asset_chunks : contains
+    asset_versions ||--o{ asset_cdc_chunks : contains
     policy_versions ||--o{ scan_evaluations : governs
     users ||--o{ scan_evaluations : requests
     scan_evaluations ||--o{ matching_evidence : explains
@@ -103,3 +105,33 @@ and PostgreSQL, as for audit events. The migration follows `0002` directly; no r
 data: the first head is signed at the next startup, release or 64th event. Downgrade drops the table and with it
 every stored head, so use it only on disposable databases. See the
 [audit protocol](audit-spec.md#transparency-log-signed-tree-heads-over-the-chain).
+
+## Migration 0005: content-defined chunks, policy rule set, per-profile evidence
+
+Follows `0004`. It creates one table and adds three columns. It changes no existing row and no column,
+index, constraint or trigger of an earlier table.
+
+| Change | Definition |
+|---|---|
+| Table `asset_cdc_chunks` | `version_id` (foreign key to `asset_versions.id`), `offset`, `length`, `sha256`; primary key `(version_id, offset)`; check `offset` from 0 to 10,485,759 and `length` from 1 to 8,192 |
+| Index `ix_cdc_match` | on `asset_cdc_chunks(sha256)`, the lookup key of a content-defined match |
+| Triggers | UPDATE and DELETE on `asset_cdc_chunks` are rejected on SQLite and PostgreSQL, as for `asset_chunks`. Rows are only inserted |
+| `policy_versions.rule_set` | `VARCHAR(16) NOT NULL`, default `rs-policy-v1`. Every existing policy keeps the rule set it was written for |
+| `policy_versions.cdc_threshold` | nullable integer. Set only for `rs-policy-v2` |
+| `scan_evaluations.profiles` | nullable JSON: the evidence of evaluated profiles other than `rs-fixed-sha256-v1`. NULL for every scan under `rs-policy-v1`, which includes every scan made before this migration |
+
+The migration computes nothing. Raw asset bytes are not stored, so existing asset versions get no
+content-defined rows: they keep only the fixed profile until a new version of the asset is registered.
+New versions are fingerprinted with every registered profile at registration. The hosted seed assets
+are completed by bootstrap from their constant bytes, not by the migration
+([detection specification](detection-spec.md#which-versions-carry-which-profile)).
+
+The rule set and the content-defined threshold have no database check constraint, because SQLite cannot
+add one to an existing table. `policy.active_policy` validates both on every read and fails closed
+(`POLICY_UNAVAILABLE`). The fixed profile's check on `asset_versions.profile_id` is unchanged: a
+version's manifest is always `rs-fixed-sha256-v1`, and the content-defined rows hang off the version.
+
+Lookups cost one query per 500 unique upload chunks and only under `rs-policy-v2`. Nothing reads the
+table outside a scan, a registration or a version listing, so an idle process still makes no database
+call (`test_idle.py`). Downgrade drops the table and the three columns, and with them every
+content-defined fingerprint, rule set and stored chunk evidence; use it only on disposable databases.

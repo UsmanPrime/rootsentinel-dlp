@@ -60,6 +60,7 @@ Push-Location backend
 python -B -m unittest tests.test_crypto tests.test_config -v
 Pop-Location
 python -B scripts/fixtures.py
+python -B scripts/cdc_vectors.py
 ```
 
 Frontend setup:

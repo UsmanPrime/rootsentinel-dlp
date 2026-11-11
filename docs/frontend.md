@@ -184,8 +184,15 @@ tabs keep the guide open while exploring a record.
 
 Register the three-chunk fixture from Assets to demonstrate the recursive uneven
 tree. The empty-input action performs a real scan; empty files cannot become
-protected assets. Fixed-size shifts, encodings and compressed data remain documented
-blind spots, not errors disguised as successful detections.
+protected assets. Encodings and compressed data remain documented blind spots, and so do
+shifts under policy rule set `rs-policy-v1`; they are not errors disguised as successful detections.
+
+The "Why this decision" panel (`components/Verdict.tsx`) lists the detection profiles the policy evaluated and, for each
+matching asset, one row per profile with matched bytes, matched chunks out of the file's chunks and the share of the file.
+A profile the policy did not evaluate is named as not evaluated, never shown as zero. Every number is a field of the scan
+record (`detection.profiles`). Asset details list per version which profiles it carries, and the Policies page shows and
+sets the rule set and the content-defined threshold. The Transfers and Assets pages offer the synthetic source sample and
+its shifted and inserted copies as inputs.
 
 Incident listing additionally accepts bounded HIGH/MEDIUM severity and newest/oldest
 ordering. These filters apply server-side before pagination; no policy or incident

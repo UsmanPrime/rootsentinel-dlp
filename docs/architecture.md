@@ -99,7 +99,7 @@ tamper tests assume the attacker does not also possess audit integrity keys.
 | Threat | Mitigation | Residual risk |
 |---|---|---|
 | Exact protected copy | SHA-256 match and withheld release | Other transfer channels remain available |
-| Edits/partial copying | Fixed block matching | Shifts, tiny snippets and transformations can evade |
+| Edits/partial copying | Fixed block matching, and content-defined chunk matching under policy rule set `rs-policy-v2` | Tiny snippets and re-encoding can evade; shifts evade under rule set `rs-policy-v1` |
 | Shared boilerplate | Per-asset evidence and threshold | Policy false positives remain possible |
 | Object-ID guessing | Server-side ownership/role checks | Authorized analysts can inspect evidence |
 | Malicious paths | Generated snapshot IDs; agent admission is no-follow (descriptor-relative on POSIX, `lstat` plus identity checks on Windows) | Host compromise excluded; Windows keeps a small check-to-use window |

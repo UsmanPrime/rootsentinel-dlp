@@ -41,7 +41,9 @@ flowchart LR
 | Infrastructure failure | Rollback and INDETERMINATE response, never authorized release | Unavailable DB cannot persist its own failure |
 | Logs disclose input | Allowlisted errors, hidden SQL parameters, no body logging; sentinel tests | Operator/infrastructure logs still need review |
 | Public upload exposure | Default `public_demo` mode denies all operational API routes; the hosted demo has no anonymous access (operator-provisioned accounts only) | An anonymous visitor mode with synthetic fixtures is an open decision and is not implemented |
-| Shifted/encoded/compressed content | Reproducible limitation tests | Fixed chunks do not decode or perform semantic analysis |
+| Shifted content, or content with bytes inserted or removed | Closed under policy rule set `rs-policy-v2`: the content-defined profile `rs-cdc-gear-v1` finds the chunks behind the change (`test_profiles.py`, `test_cdc.py`). Open under `rs-policy-v1`, where the miss is still asserted | Needs an asset version that carries content-defined chunks; repetitive content without a cut point and files of very few chunks can still be missed; see the [detection specification](detection-spec.md#testable-limitations) |
+| Re-encoded or compressed content (line endings, UTF-16, base64, zlib, archives) | Not detected by either profile; reproducible limitation tests | Open until a normalising winnowing profile exists. No decoding and no semantic analysis |
+| Chosen chunk boundaries | The gear table is public, so a sender can predict the cut points of a file. Minimum 512 and maximum 8,192 bytes bound every chunk; evidence caps bound lookups | A sender who edits inside every chunk defeats chunk matching, as editing every block defeats block matching |
 | Transfers outside this application | No claim of prevention | All other network/OS exfiltration paths remain possible |
 
 Runtime directories must be external to source and known synchronized storage.
@@ -106,7 +108,8 @@ staging directory (bytes, names, links, timing) and the network path to the gate
 |---|---|---|
 | Copy a protected file under another name | Server-side exact/block match, quarantine, no release (`test_c2_…`) | Names are never trusted either way |
 | Partial copy of protected content | Block threshold applies (`test_c3_…`: two aligned blocks and a single aligned block blocked) | Below-threshold copies are allowed by policy |
-| Shifted, CRLF, UTF-16, compressed or archived copy | Not detected; **asserted as known misses** | Fixed 1 KiB blocks cannot see transformed content; no decoding |
+| Shifted copy, or copy with an inserted line | Blocked and quarantined when the gateway's active policy uses rule set `rs-policy-v2` (`test_profiles.py`). Under `rs-policy-v1`, the default of a fresh gateway and of the agent's test gateway, not detected; **asserted as known misses** (`test_c3_…`) | The agent has no detection of its own; the outcome is the gateway policy's |
+| CRLF, UTF-16, compressed or archived copy | Not detected; **asserted as known misses** | Neither profile sees re-encoded content; no decoding. Open until a winnowing profile exists |
 | Symlink, junction, hardlink, FIFO or device placed in staging | Classified by `lstat`, rejected and never read (`test_c5_…`, `test_fsutil_cli.py`); symlink swapped after observation is not followed (POSIX `O_NOFOLLOW`) | Windows has no `dir_fd`: a small check-to-use window remains against a hostile writer who can replace operator-owned parents |
 | Nested folder to smuggle content | Nonrecursive; nested files are never read and never delivered | They stay in staging unscanned |
 | File still being written | Stability polling; `.ready` hint (`test_c4_…`) | A paused writer looks finished; a partial file may be delivered, then the whole file later |

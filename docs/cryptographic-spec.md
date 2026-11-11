@@ -106,6 +106,80 @@ For `A` repeated 1024 bytes, then `B` repeated 1024 bytes, then one `C`, root is
 `b77f5d4eb26d8387914ce5dd21753f67c1594343db08d9ffab1ace114aae98de`.
 Its shape is `node(node(leaf0, leaf1), leaf2)`.
 
+## Content-defined profile rs-cdc-gear-v1
+
+A second detection profile, separate from everything above. It adds no field to the manifest, no leaf to
+the Merkle tree and no proof. `rs-fixed-sha256-v1`, its manifests, descriptors, roots and fixed examples
+are unchanged. The code is `backend/app/crypto/cdc.py`; the cut-point rule and the matching are in the
+[detection specification](detection-spec.md#content-defined-chunks-rs-cdc-gear-v1).
+
+### Gear table derivation
+
+The rolling hash maps each byte value to a 64-bit constant. The published FastCDC table is a list of
+random numbers. This profile derives its table from SHA-256 instead, so that anyone can recompute it and
+no constant has to be trusted:
+
+```text
+domain  = the 38 ASCII bytes "RootSentinel rs-cdc-gear-v1 gear table"
+block_c = SHA-256(domain || uint32_be(c))            for c = 0, 1, ..., 63
+Gear[4c + k] = uint64_be(block_c[8k : 8k + 8])       for k = 0, 1, 2, 3
+```
+
+That is SHA-256 in counter mode over a fixed domain string: 64 digests of 32 bytes give 256 values of 8
+bytes. `Gear[b]` is the value for byte `b`.
+
+| Check | Value |
+|---|---|
+| `Gear[0]` | `0x7bf93287f471c4d9` |
+| `Gear[255]` | `0x6a0ae301002d122c` |
+| SHA-256 of the table (the 256 values as big-endian 64-bit integers, 2,048 bytes) | `6a80b73d855e1aaaba9dc9b54d5e9bd4047e1d2b1ea9803fb0e4b33ee28c1d13` |
+
+The 256 values are distinct. The same hash is reported by `GET /api/v1/detection/profiles`.
+
+### Rolling hash and masks
+
+```text
+fp = 0 at the first hashed byte of a chunk (512 bytes after the chunk start)
+fp = ((fp << 1) + Gear[byte]) mod 2^64 for each following byte
+cut before the byte whose update gives  fp & MASK == 0
+MASK_S = 0x0000d93003530000   13 one-bits   used while the chunk is shorter than 2,048 bytes
+MASK_L = 0x0000d90003500000    9 one-bits   used from 2,048 bytes on
+```
+
+`MASK_S` is the 13-bit mask printed in the paper (MaskA of Algorithm 2). `MASK_L` is the paper's 11-bit
+MaskL with its two lowest one-bits (bits 16 and 17) cleared, which leaves 9 bits that are a subset of
+`MASK_S`. Thirteen and nine bits are normalization level 2 around an 11-bit (2 KiB) expected size: two
+bits more before the normal size, two bits fewer after it. The one-bits of `MASK_S` are bits 16, 17, 20,
+22, 24, 25, 36, 37, 40, 43, 44, 46 and 47; `MASK_L` is the same without bits 16, 17, 36 and 37. They are
+spread out as in the paper, up to bit 47, so that a decision depends on up to 48 preceding bytes and not
+only on the last few.
+
+A chunk identifier is `SHA-256(chunk_bytes)`. Unlike a fixed-profile descriptor it carries no index and
+no length: the same content is the same chunk at any offset, which is the purpose of this profile.
+
+### Security claims of this profile
+
+- The gear hash is not a cryptographic hash and is not used as one. It only chooses boundaries. Anyone
+  can compute where a file will be cut, and can construct content with no cut point or with many. The
+  minimum and maximum chunk sizes bound the result either way.
+- A match is SHA-256 equality of whole chunks. It shows that a run of bytes is identical to a registered
+  run, subject to SHA-256's assumptions. It proves neither origin nor intent.
+- Content-defined chunk rows are not committed to by any Merkle root or manifest. Their integrity is the
+  integrity of the database row, protected against accidental change by insert-only triggers.
+- Chunk hashes reveal equality and can support guesses of predictable content, as fixed block hashes do.
+
+### Vectors
+
+`fixtures/cdc-vectors.json` is a vector file of its own. It records the table hash, the first and last
+four table values, the masks, and for nine inputs the exact cut points and chunk hashes: the empty input,
+one byte, 512 and 513 bytes, a 65,536-byte SHA-256 counter stream, that stream with one byte in front and
+with its first 100 bytes removed, 20,000 zero bytes and the synthetic source sample. Every input is
+rebuilt from a rule written in the file; no payload is stored. `scripts/cdc_vectors.py` checks the file
+and refuses to write it unless a second implementation, transcribed from the paper without any
+optimisation, produces the same cut points. `backend/tests/test_cdc.py` recomputes the table from the rule
+above, pins literal cut points and checks the chunking properties. The Phase 01 vectors
+(`fixtures/manifest.json`, `backend/tests/test_crypto.py`) are untouched.
+
 ## Phase 03 keyed audit extension
 
 The file fingerprint/Merkle specification above is unchanged. SHA-256 file hashes are

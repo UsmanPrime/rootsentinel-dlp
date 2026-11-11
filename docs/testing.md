@@ -12,13 +12,13 @@ required checks on `main`.
 
 | Job | Runs |
 |---|---|
-| `backend (3.12)`, `backend (3.13)` | `pytest` in `backend` (SQLite), `scripts/fixtures.py`, `scripts/frontend_contracts.py --check`, `git diff --exit-code` |
+| `backend (3.12)`, `backend (3.13)` | `pytest` in `backend` (SQLite), `scripts/fixtures.py`, `scripts/cdc_vectors.py`, `scripts/frontend_contracts.py --check`, `git diff --exit-code` |
 | `browser` | Builds the interface, serves it from the API (`tests.browser_server`), runs `scripts/browser_phase04.py` and `scripts/browser_phase04_negative.py`; uploads only the two sanitized JSON reports |
 | `postgres` | The same backend `pytest` suite against a disposable PostgreSQL 17 service, `git diff --exit-code` |
 | `frontend` | `npm ci`, `npm run typecheck`, `npm run format:check` (Prettier), `npm test` (Vitest), `npm run build`, `git diff --exit-code` |
 | `agent (3.12)`, `agent (3.13)` | `scripts/source_corpus.py`, agent `pytest`, `scripts/demo_agent.py`, `scripts/audit_publication.py`, `git diff --exit-code` |
 | `agent-windows` | `scripts/source_corpus.py`, agent `pytest` and `scripts/demo_agent.py` on Windows |
-| `container` | Builds the hosted image with `--build-arg ROOTSENTINEL_COMMIT=$GITHUB_SHA`, checks its size budget, startup refusal, smoke test with `--expect-commit`, unprivileged uid, server `HOME`, and restart idempotence |
+| `container` | Builds the hosted image with `--build-arg ROOTSENTINEL_COMMIT=$GITHUB_SHA`, checks its size budget, startup refusal, smoke test with `--expect-commit`, unprivileged uid, server `HOME`, and restart idempotence (two seeds registered once, rule set `rs-policy-v2` activated once) |
 
 ## 2. Unit and cryptographic tests
 
@@ -32,7 +32,9 @@ ordering. `test_config.py` checks safe external path configuration.
 
 From the repository root, `python -B scripts/fixtures.py` rebuilds the synthetic fixtures in memory and
 checks `fixtures/manifest.json`. `--write-manifest` deliberately updates the manifest but never writes
-payload files; do not use it to hide unexplained drift. `python -B scripts/frontend_contracts.py --check`
+payload files; do not use it to hide unexplained drift. `python -B scripts/cdc_vectors.py` does the same for
+`fixtures/cdc-vectors.json`, the vectors of the content-defined profile (gear table hash and exact chunk boundaries), after
+checking the chunker against a second, unoptimised implementation. `python -B scripts/frontend_contracts.py --check`
 fails when `frontend/src/lib/contracts.ts` no longer matches `docs/openapi.json`.
 
 ## 3. API and integration tests
@@ -47,6 +49,8 @@ behavior only; the `postgres` CI job covers PostgreSQL.
 | `test_api_security.py` | Complete API journey, anonymous denial, role restrictions, object access, session hashing/expiry/revocation/rotation, CSRF/Origin/Host, login throttling, filename and label injection, upload limits and cleanup, frozen bytes, infrastructure failure never allows, `public_demo` denial, OpenAPI release contract |
 | `test_additional_gates.py` | Concurrent scans, immutable historical rows, incomplete Content-Length, actual-byte counting, ASGI disconnects, sanitized unexpected errors, no content in logs, missing registry fails closed, no combining of assets, cookie settings, snapshot links, disabled users |
 | `test_detection_policy.py` | Fixture evaluation matrix, size boundaries, empty registration rejected, one-byte change, documented transform misses, repetition and shared assets, versions and retirement, policy threshold and disable, invalid thresholds, query count and evidence cap |
+| `test_cdc.py` | Content-defined profile without a database: gear table recomputed from its rule, published parameters and masks, exact chunk boundaries and chunk hashes of nine fixed inputs, agreement with an independent reference on random inputs, determinism, size bounds, concatenation, resynchronisation after an inserted or deleted prefix and after an insertion in the middle, maximum-size fallback for repetitive content, strict inputs |
+| `test_profiles.py` | Profile registry (fixed profile unchanged, no replacement, unknown id fails closed), both profiles stored at registration, insert-only chunk rows, versions without content-defined rows, rule set v1 untouched (no chunk table read, nothing new stored), shifted and inserted corpus copies blocked under rule set v2 while the fixed profile still misses them, benign files allowed, union scoring and no summing across assets, current versions only, evidence caps, the pure v2 evaluator and its fail-closed cases, policy versions and rule set inheritance, the HTTP journey with a blocked transfer that cannot be released, bootstrap seeding, seed completion and one-time activation |
 | `test_database.py` | Migration indexes and constraints, immutability triggers and foreign keys, rollback, concurrent registration |
 | `test_gateway.py` | Single-use verified download and checkpoint, BLOCK with zero content, preflight fail-closed, ownership, unsafe filenames, idempotency, missing key and audit failure, concurrent release, expiry and restart, incident conflicts, buffer survives snapshot change after capture, rate and capacity bounds, disconnect and send failure (`DELIVERY_UNKNOWN`), tampered audit, private snapshot permissions, no payload in logs |
 | `test_gateway_edges.py` | Upload cap boundaries, a lying Content-Length, empty file, safe and refused names, exact content type, release replay, release after expiry, policy and registry staleness, repeated BLOCK release, a 12-way parallel release race that delivers once, edited stored audit event, deleted newest event against the checkpoint, tampered and corrupt checkpoint files |
@@ -55,7 +59,7 @@ behavior only; the `postgres` CI job covers PostgreSQL.
 | `test_presentation.py` | Tree projection bounds and uneven topology, overview roles, tree route trusted-root proof and authorization, incident filter and sort |
 | `test_hosted.py` | Hosted settings, static serving and traversal, enforced CSP with HSTS only when hosted, every anonymous route denied, `public_demo` still closed, hop-count client address, upload/session/retention/rate overrides, `bootstrap`, and the gateway invariants in the hosted configuration |
 | `test_client_ip.py` | `ROOTSENTINEL_CLIENT_IP_HEADER`: one valid address only, forged `X-Forwarded-For` ignored, shared `unidentified` bucket, startup refusal with hops, stable 429 codes, health probes counted separately, Host check before client identification, the counter advances only on sign-in, fixed log classification with no request value |
-| `test_idle.py` | Zero database statements and zero connection checkouts over a simulated idle hour with `/health` every 10 minutes, `/health` without a database call, expiry at the due time and not before, the due time after a restart, cleanup triggered by snapshot files without the registry lock, retry after a failed pass, pool settings |
+| `test_idle.py` | Zero database statements and zero connection checkouts over a simulated idle hour with `/health` every 10 minutes, `/health` without a database call, expiry at the due time and not before, the due time after a restart, cleanup triggered by snapshot files without the registry lock, retry after a failed pass, pool settings; an idle hour after registration, activation of rule set v2 and a content-defined block; the profile list reads no table; startup reads no fingerprint rows |
 | `test_operations.py` | `/health` fields (`hosted`, `commit`, `max_upload_bytes`), commit validation and fallback order, peak-memory (`VmHWM`) reading and logging |
 | `test_transparency_tree.py` | RFC 9162 tree without a database: every root, inclusion proof and consistency proof for sizes 1 to 128 against an independent reference, the published Certificate Transparency vectors, tampered leaf, root and path, forked and rewritten trees, the signed-bytes encoding, RFC 8032 key vector, wrong key and altered head rejected |
 | `test_transparency_log.py` | Heads at every 64th event, at release and on request; API bounds; append-only triggers; restart rebuild; altered event, altered head, truncation and rollback fail closed; release refused without the key or when signing fails; memory equals database after a failed transaction; events from another process; evidence export bundle; key tool and key file checks; rotation |
@@ -184,7 +188,8 @@ records DS002, DS031 and DS026 with reasons), `hadolint` (Dockerfile), `actionli
 | Size boundaries | Correct at the upload cap; one byte over is 413 | `test_detection_policy.py`, `test_gateway_edges.py`, `test_api_security.py` |
 | Single-byte change in a multiblock file | Remaining aligned blocks trigger BLOCK | `test_detection_policy.py` |
 | Aligned partial copy or embedding | BLOCK at the configured threshold | `test_detection_policy.py`, agent `test_gateway_integration.py` |
-| One-byte shift, line endings, encoding, compression | Documented fixed-block misses, not fake prevention | `test_detection_policy.py`, agent `test_gateway_integration.py` |
+| One-byte shift or an inserted line | Rule set v1: documented fixed-block miss. Rule set v2: BLOCK by the content-defined profile, with the fixed profile still reporting no match | `test_detection_policy.py`, `test_profiles.py`, agent `test_gateway_integration.py` |
+| Line endings, encoding, compression | Documented misses of both profiles, not fake prevention | `test_detection_policy.py`, `test_profiles.py`, agent `test_gateway_integration.py` |
 | Shared content | All implicated assets shown; no combining across assets | `test_detection_policy.py`, `test_additional_gates.py` |
 | Valid and corrupt proofs | Success or failure against the registry's trusted root | `test_crypto.py`, `test_presentation.py`, `Integrity.test.tsx`, `browser_phase04.py` |
 | Concurrency | Isolated decisions; overload rejected; one delivery | `test_additional_gates.py`, `test_gateway.py`, `test_gateway_edges.py`, `test_database.py` |

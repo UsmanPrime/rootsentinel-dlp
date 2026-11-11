@@ -43,7 +43,10 @@ in their existing transactions. Transfers append submission, completed scan, dec
 failure/expiry, release attempt/denial/start and completion/uncertainty. Incidents append
 creation/update; exports and successful verification actions are recorded. Internal
 registry unit-of-work calls do not manufacture historical events. The hosted `bootstrap`
-command seeds its synthetic asset through the normal path and appends `ASSET_REGISTERED`.
+command seeds its synthetic assets through the normal path and appends `ASSET_REGISTERED` for each. When it gives
+a seed registered earlier the fingerprints of a detection profile it lacks, it appends `ASSET_PROFILE_ADDED` with the
+new registry revision, and when it activates policy rule set `rs-policy-v2` it appends `POLICY_CHANGED`. Each happens
+at most once per database.
 Pre-Phase-03 records are explicitly outside this chain.
 
 Authorized release denials are audited once ownership and chain integrity are known.

@@ -167,8 +167,15 @@ subdomains) is added only when hosted. See [frontend](frontend.md#content-securi
   the account; accounts it does not list are untouched. Re-running bootstrap with an unchanged file changes nothing.
 * **Database URL**: an environment variable set in the dashboard. Do not put it in chat, in the repository or in a shell history.
 * Nothing in the repository, the image or CI contains a real secret. CI uses throwaway generated secrets.
-* Bootstrap seeds one synthetic protected asset (`synthetic-protected-sample`) through the normal registration and audit path, using
-  a disabled internal ADMIN identity that cannot sign in. Register more assets as an ADMIN in the UI if you want.
+* Bootstrap seeds two synthetic protected assets through the normal registration and audit path, using a disabled internal ADMIN
+  identity that cannot sign in: `synthetic-protected-sample` (the bytes of the smoke test's protected fixture) and
+  `synthetic-source-sample` (source-shaped text, the bytes of the interface's `source` fixture, so its shifted and inserted copies
+  show the content-defined profile). Register more assets as an ADMIN in the UI if you want.
+* Bootstrap also does two things once per database. A seed registered before the content-defined profile existed gets that
+  profile's fingerprints (`profiles: seed assets given missing fingerprints=N` in the log), because only seeds have their bytes in
+  the image; every other asset needs a new version. And while the migration's own policy 1 is still active, bootstrap activates
+  policy rule set `rs-policy-v2` (`policy: rule set rs-policy-v2 activated`). After that the rule set is the administrators' choice
+  on the Policies page and no restart changes it. Both steps make database calls only during startup.
 
 ### What you must do yourself (checklist)
 
@@ -340,7 +347,7 @@ redeploy. Neon's free plan keeps six hours of restore history; a restore also in
 ### Limitations
 
 Free tiers sleep (Render: after 15 minutes idle, about a minute to wake) and may restart at any time. Retained snapshots and
-checkpoints do not survive a restart. Fixed 1 KiB block matching limits still apply: shifted, encoded, compressed or otherwise
-transformed content is missed. The Content-Security-Policy is enforced, but it cannot stop a malicious script that the build itself
+checkpoints do not survive a restart. Detection limits still apply: encoded, compressed or otherwise re-encoded content is missed by both
+detection profiles, and shifted content is found only under policy rule set `rs-policy-v2` and only in content that has cut points. The Content-Security-Policy is enforced, but it cannot stop a malicious script that the build itself
 contains. Real uploads are limited to signed-in accounts, at most 1 MiB on the hosted demo, and must be synthetic: the notice in the
 interface is a reminder, not a control.

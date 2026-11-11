@@ -20,17 +20,18 @@ returns user metadata and CSRF, with the opaque session in an HttpOnly cookie.
 | POST `/assets?label=...` | ADMIN; raw bytes; new asset/version; 201 |
 | GET `/assets/{asset_id}` | ADMIN/ANALYST; display metadata and state |
 | POST `/assets/{asset_id}/versions?expected_version=N` | ADMIN; raw bytes, optimistic precondition; 201 |
-| GET `/assets/{asset_id}/versions` | ADMIN/ANALYST; paginated manifest summaries |
+| GET `/assets/{asset_id}/versions` | ADMIN/ANALYST; paginated manifest summaries; `profiles` states per detection profile whether the version carries its fingerprints and how many chunks |
 | GET `/assets/{asset_id}/versions/{version_id}` | ADMIN/ANALYST; manifest and ordered chunks |
 | POST `/assets/{asset_id}/retire` | ADMIN; idempotent retirement |
 | GET `/assets/{asset_id}/versions/{version_id}/proofs/{index}` | ADMIN/ANALYST; real Phase 01 proof |
 | POST `/integrity/verify` | ADMIN/ANALYST; proof, asset_id, version_id; trusted root from registry |
-| GET `/policies/active` | All authenticated roles |
+| GET `/detection/profiles` | All authenticated roles; the registered detection profiles with id, version and published parameters; reads no table |
+| GET `/policies/active` | All authenticated roles; includes `rule_set` and `cdc_threshold` |
 | GET `/policies/history` | ADMIN/ANALYST; paginated immutable versions |
-| POST `/policies` | ADMIN; threshold, block_enabled, expected_version UUID; 201 |
+| POST `/policies` | ADMIN; threshold, block_enabled, expected_version UUID, optional `rule_set` (`rs-policy-v1` or `rs-policy-v2`; omitted keeps the current one) and `cdc_threshold` (only with `rs-policy-v2`); 201 |
 | POST `/scans?filename=...` | Authenticated; raw bytes; persistent evidence/decision; 201 |
 | GET `/scans` | ADMIN/ANALYST all; EMPLOYEE own; paginated summaries |
-| GET `/scans/{scan_id}` | Object-authorized complete evidence |
+| GET `/scans/{scan_id}` | Object-authorized complete evidence; `detection.matches` is the fixed profile's evidence and `detection.profiles` lists every evaluated profile with matched bytes, matched chunks, share of the file and matched byte runs |
 
 Pagination defaults to 25, permits limit 1 to 100 and offset 0 to 100,000. Version summaries
 default to five with maximum ten. Sorts include stable IDs or unique version numbers.
