@@ -39,6 +39,9 @@ def main():
         button = page.get_by_role("button", name="Evaluate transfer", exact=True)
         button.evaluate("element => { element.click(); element.click(); }")
         expect(page.locator(".verdict-banner")).to_be_visible(); assert len(submissions) == 1; checks.append("real same-tick duplicate submission prevention")
+        # The verdict explanation reads the policy (and the asset) as soon as the record renders. Wait for those requests to finish
+        # before the session is expired, or one of them can reach the server after the fault, sign the page out and detach the button.
+        page.wait_for_load_state("networkidle")
         inject(state, "expire-session"); page.get_by_role("button", name="Refresh state").click(); expect(page.get_by_role("button", name="Sign in", exact=True)).to_be_visible(); expect(page.get_by_text("Your session ended.", exact=False)).to_be_visible(); checks.append("real session expiry clears private workspace")
         login(); approved = submit(); inject(state, "audit-mac")
         page.goto(origin + "/audit"); page.get_by_role("button", name="Verify audit integrity", exact=True).click(); expect(page.get_by_text("FAILED", exact=True)).to_be_visible(); checks.append("tampered audit chain displays actual verification failure")
