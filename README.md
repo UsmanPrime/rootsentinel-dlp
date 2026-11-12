@@ -277,6 +277,7 @@ rootsentinel-dlp/
 |---|---|
 | [Architecture](docs/architecture.md) | Components, trust boundaries, detection and policy contract |
 | [Threat model](docs/threat-model.md) | Abuse cases, controls, tests and residual risk |
+| [Visitor mode](docs/visitor-mode.md) | Sandboxed visitor sessions, route allowlist, caps and audit arithmetic |
 | [Cryptographic spec](docs/cryptographic-spec.md) | Hash profile, block layout, Merkle trees |
 | [Detection spec](docs/detection-spec.md) | Matching rules and the misses we test for |
 | [Policy spec](docs/policy-spec.md) | Versioned policies and thresholds |

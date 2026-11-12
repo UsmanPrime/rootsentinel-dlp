@@ -31,6 +31,7 @@ export type AuditVerification = {
 export type AuthView = {
   "csrf_token": string;
   "user": UserView;
+  "visitor"?: (VisitorInfo | null);
 };
 
 export type BlockEvidence = {
@@ -344,7 +345,7 @@ export type TreeView = {
 
 export type UserView = {
   "id": string;
-  "role": "ADMIN" | "ANALYST" | "EMPLOYEE";
+  "role": "ADMIN" | "ANALYST" | "EMPLOYEE" | "VISITOR";
   "username": string;
 };
 
@@ -375,5 +376,12 @@ export type VersionView = {
   "number": number;
   "profiles"?: Array<VersionProfile>;
   "registry_revision": number;
+};
+
+export type VisitorInfo = {
+  "expires_at": string;
+  "idle_seconds": number;
+  "submissions_remaining": number;
+  "submissions_total": number;
 };
 

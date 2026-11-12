@@ -190,7 +190,7 @@ def test_every_anonymous_api_route_is_denied_and_nothing_unexpected_is_exposed(h
     assert outside_api == ["/health", "/{path:path}"], "a new unauthenticated route must be reviewed on purpose"
     checked = 0
     for route in app.routes:
-        if not isinstance(route, APIRoute) or not route.path.startswith("/api/v1") or route.path in {"/api/v1/auth/login", "/api/v1/auth/session"}:
+        if not isinstance(route, APIRoute) or not route.path.startswith("/api/v1") or route.path in {"/api/v1/auth/login", "/api/v1/auth/session", "/api/v1/auth/visitor"}:
             continue
         url = re.sub(r"\{index\}", "0", re.sub(r"\{[a-z_]+\}", str(uuid4()), route.path))
         for method in sorted(route.methods - {"HEAD", "OPTIONS"}):

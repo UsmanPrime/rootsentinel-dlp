@@ -238,3 +238,14 @@ phases. They rerun the test suites and write sanitized results to `docs/evidence
 `verify_phase05.py` also checks that `backend/app`, `backend/migrations`, `docs/openapi.json` and `frontend`
 are unchanged from the Phase 04 head; later phases changed those paths, so that check now fails by design.
 `python -B scripts/export_openapi.py` regenerates `docs/openapi.json` after an approved API change.
+
+## 12. Visitor mode
+
+`backend/tests/test_visitor.py` covers entry (kill switch, Origin, `Sec-Fetch-Site`, no password, cookie flags, per
+address limit, concurrent, daily and audit ceiling caps, configuration bounds), the session (idle and absolute expiry,
+the 60 s throttle, no role change, sign out), the route allowlist (every registered route classified, 403 outside the
+list, nothing audited), isolation (two visitors and accounts, `include_visitors`), the real flow (a shifted synthetic
+source blocked under `rs-policy-v2`, a benign file released once, the audit chain verifying), lazy cleanup, the idle
+guarantee, the actor column check and migration 0006. `scripts/browser_visitor.py` runs the anonymous journey and the
+expiry page in a real browser against `tests.browser_server` started with `ROOTSENTINEL_BROWSER_VISITOR=1`, and
+requires zero CSP violations.

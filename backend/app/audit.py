@@ -27,7 +27,7 @@ KINDS = {
     "TRANSFER_EXPIRED", "TRANSFER_STALE", "RELEASE_ATTEMPT", "RELEASE_DENIED",
     "RELEASE_STARTED", "STREAM_FINISHED", "DELIVERY_UNKNOWN", "INCIDENT_CREATED",
     "INCIDENT_UPDATED", "EVIDENCE_EXPORTED", "AUDIT_VERIFIED", "CHECKPOINT_CREATED",
-    "ASSET_PROFILE_ADDED",
+    "ASSET_PROFILE_ADDED", "VISITOR_ENTERED", "VISITOR_ENDED", "VISITOR_EXPIRED",
 }
 DETAILS = {"expires", "scan_id", "incident_id", "policy_id", "registry_revision", "reason", "state", "digest", "size", "revision", "note_digest", "resolution_digest"}
 
@@ -134,6 +134,16 @@ class KeyRing:
             raise DomainError("AUDIT_KEY_UNAVAILABLE", 503) from None
 
 
+def actor_column_matches(row, payload):
+    """The filtering column audit_events.actor_id must agree with the actor inside the HMAC'd payload.
+
+    NULL is accepted: events written before migration 0006 have no column value, and an event whose column is
+    NULL is simply never returned by a view that filters on the actor."""
+    column = getattr(row, "actor_id", None)
+    if column is not None and column != payload.actor_id:
+        raise ValueError("ACTOR_MISMATCH")
+
+
 def check_event(row, keys, previous):
     """One stored event: canonical form, identifiers, the link to the previous MAC and its own HMAC.
 
@@ -143,6 +153,7 @@ def check_event(row, keys, previous):
         raise ValueError("CANONICAL_MISMATCH")
     if payload.sequence != row.sequence or payload.stream_id != row.stream_id:
         raise ValueError("SEQUENCE_MISMATCH")
+    actor_column_matches(row, payload)
     if payload.previous_mac != previous:
         raise ValueError("LINK_MISMATCH")
     if not hmac.compare_digest(mac_for(keys.key(payload.key_id), row.canonical), row.mac):
@@ -160,6 +171,7 @@ def verify_records(rows, keys, stream_id, sequence, expected_mac, checkpoint=Non
                 raise ValueError("CANONICAL_MISMATCH")
             if payload.sequence != expected or row.sequence != expected or payload.stream_id != stream_id or row.stream_id != stream_id:
                 raise ValueError("SEQUENCE_MISMATCH")
+            actor_column_matches(row, payload)
             if payload.previous_mac != previous:
                 raise ValueError("LINK_MISMATCH")
             computed = mac_for(keys.key(payload.key_id), row.canonical)
@@ -213,7 +225,7 @@ class AuditService:
         encoded = canonical(payload.model_dump())
         mac = mac_for(key, encoded)
         row = AuditEvent(id=payload.id, stream_id=head.stream_id, sequence=payload.sequence,
-                         resource_id=resource_id, canonical=encoded, mac=mac)
+                         resource_id=resource_id, actor_id=actor_id, canonical=encoded, mac=mac)
         s.add(row)
         head.sequence, head.mac = payload.sequence, mac
         s.flush()

@@ -135,3 +135,20 @@ Lookups cost one query per 500 unique upload chunks and only under `rs-policy-v2
 table outside a scan, a registration or a version listing, so an idle process still makes no database
 call (`test_idle.py`). Downgrade drops the table and the three columns, and with them every
 content-defined fingerprint, rule set and stored chunk evidence; use it only on disposable databases.
+
+## Migration 0006: visitor sandbox
+
+Follows `0005`. Forward only in operation; the downgrade exists for disposable test databases and refuses to run
+when a visitor account exists.
+
+| Change | Definition |
+|---|---|
+| `users.role` check | `ck_user_role` also allows `VISITOR`. SQLite cannot alter a check, so the table is rebuilt from its own stored definition: the table, index and trigger statements are read from `sqlite_master` and reused, foreign keys are off for the swap and `PRAGMA foreign_key_check` must be empty afterwards. PostgreSQL drops and re-adds the constraint. To allow this, `migrations/env.py` runs each SQLite migration in its own transaction |
+| `sessions.last_seen_at` | nullable; written for visitor sessions at most once per 60 s |
+| Table `visitor_sessions` | `session_id` (primary key, not a foreign key), `user_id` (foreign key, unique), `created_at` (indexed), `expires_at`, `submissions_used`, `release_attempts_used`, `ended_at` |
+| `assets.synthetic` | boolean, default false. The two seed labels are set by the migration and by bootstrap |
+| `audit_events.actor_id` | nullable, indexed. Written on new events only (a backfill would be an UPDATE, which the append-only trigger forbids). It is outside the HMAC'd bytes; integrity verification checks that a non-null value equals the actor inside the payload |
+
+A test upgrades a populated 0005 database and asserts that every foreign key, every index and every trigger, the
+append-only UPDATE and DELETE triggers included, is still present, that `UNIQUE(username)` survives and that rows are
+unchanged.

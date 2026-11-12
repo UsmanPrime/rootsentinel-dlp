@@ -14,6 +14,7 @@ from .errors import DomainError
 from .gateway_models import AuditHead, Incident, Transfer
 from .models import Asset, PolicyDecision
 from .registry import lock_state, version_fingerprint
+from .visitors import visitor_user_ids
 from .schemas import ChunkView, ManifestView, ProofView, Schema
 
 
@@ -40,13 +41,15 @@ class Overview(Schema):
     release_configured: bool
 
 
-def overview(s, actor, settings):
+def overview(s, actor, settings, include_visitors=False):
     # Existing mutation lock gives all aggregate statements one coherent observation.
     lock_state(s)
     observed = now()
     filters = [Transfer.created_at <= observed]
-    if actor.role == "EMPLOYEE":
+    if actor.own_only:
         filters.append(Transfer.actor_id == actor.id)
+    elif not include_visitors:
+        filters.append(Transfer.actor_id.not_in(visitor_user_ids()))
     grouped = dict(s.execute(select(PolicyDecision.outcome, func.count(Transfer.id))
         .select_from(Transfer).outerjoin(PolicyDecision, PolicyDecision.scan_id == Transfer.scan_id)
         .where(*filters).group_by(PolicyDecision.outcome)).all())
@@ -57,8 +60,11 @@ def overview(s, actor, settings):
         (Transfer.created_at >= day) & (Transfer.created_at < day + timedelta(days=1)), 1)))
         for day in days]).select_from(Transfer).where(*filters)).one()
     privileged = actor.role in {"ADMIN", "ANALYST"}
-    severity = dict(s.execute(select(Incident.severity, func.count()).where(
-        Incident.status.in_(["OPEN", "INVESTIGATING"])).group_by(Incident.severity)).all()) if privileged else None
+    incident_filters = [Incident.status.in_(["OPEN", "INVESTIGATING"])]
+    if not include_visitors:
+        incident_filters.append(Incident.transfer_id.not_in(select(Transfer.id).where(Transfer.actor_id.in_(visitor_user_ids()))))
+    severity = dict(s.execute(select(Incident.severity, func.count()).where(*incident_filters)
+                              .group_by(Incident.severity)).all()) if privileged else None
     return Overview(observed_at=observed, scope="workspace" if privileged else "own",
         total_transfers=sum(grouped.values()), allowed_decisions=grouped.get("ALLOW", 0),
         blocked_decisions=grouped.get("BLOCK", 0),
@@ -128,9 +134,11 @@ def install_presentation(app, principal):
     Actor = Annotated[Principal, Depends(principal)]
 
     @app.get("/api/v1/overview", response_model=Overview)
-    def dashboard(actor: Actor):
+    def dashboard(actor: Actor, include_visitors: bool = False):
+        if include_visitors:
+            actor.require("ADMIN")
         with app.state.db.transaction() as s:
-            return overview(s, actor, app.state.settings)
+            return overview(s, actor, app.state.settings, include_visitors)
 
     @app.get("/api/v1/assets/{asset_id}/versions/{version_id}/tree", response_model=TreeView)
     def tree(asset_id: UUID, version_id: UUID, actor: Actor,

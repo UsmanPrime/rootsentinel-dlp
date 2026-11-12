@@ -28,7 +28,8 @@ def health(settings, base_url):
 def test_health_reports_a_local_deployment_with_unknown_commit_by_default(system):
     body = health(system[0], "http://127.0.0.1:5173")
     assert body == {"status": "ok", "mode": "local", "release_configured": True, "hosted": False,
-                    "commit": "unknown", "max_upload_bytes": 10485760}
+                    "commit": "unknown", "max_upload_bytes": 10485760, "visitor_mode": False,
+                    "visitor_upload_bytes": 65536}
 
 
 def test_health_reports_a_hosted_deployment_its_commit_and_upload_cap(system):

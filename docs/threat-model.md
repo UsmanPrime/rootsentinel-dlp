@@ -175,3 +175,14 @@ in the [audit protocol](audit-spec.md#transparency-log-signed-tree-heads-over-th
 
 The log shows that events were recorded and not later changed. It does not show that every action was recorded, and
 it says nothing about what happened outside the gateway.
+
+## Visitor mode surface (delta)
+
+| Threat | Control | Residual risk |
+|---|---|---|
+| A visitor reaches an administrative route | default deny in the shared dependency; a test fails for an unclassified route | a new route written without the dependency is public by construction; the route enumeration test covers it |
+| A visitor reads real data or other visitors' data | own-rows scoping by sandbox id; visitor scans match `assets.synthetic` only; dedicated `/visitor/` audit routes; foreign identifiers answer 404 | none known beyond the shared audit chain itself, which carries only identifiers, digests and sizes |
+| Visitors exhaust the shared audit chain and lock out real users | audit ceiling 14,000 (entry, submissions and release attempts refused), per session and daily caps, release attempt cap | a leaked or shared client address can use the daily cap; the ceiling then protects the chain |
+| Session abuse (fixation, role change) | server issued tokens, no role change route, kill switch ends live sessions | none beyond the normal session model |
+| Flood of entries | per address and global caps, 429 before any database work for the per address limit | the per address limit is in memory and resets on restart; the database caps do not |
+| Idle cost | no timer; cleanup is lazy and bounded; an idle process makes no database call | none |

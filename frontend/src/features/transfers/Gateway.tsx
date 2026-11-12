@@ -16,7 +16,7 @@ import type {
   TransferView,
 } from "../../lib/contracts";
 import { useAction, useGet, useTitle } from "../../lib/hooks";
-import { useSession } from "../../lib/session";
+import { isPrivileged, useSession } from "../../lib/session";
 import { bytes, date, reasonText, short } from "../../lib/errors";
 import { Evidence } from "../../components/Evidence";
 import { VerdictExplanation } from "../../components/Verdict";
@@ -75,7 +75,10 @@ function TransferList() {
   const [dragging, setDragging] = useState(false);
   const environment = useEnvironment();
   const toast = useToast();
-  const cap = environment.maxUploadBytes;
+  const cap =
+    auth!.user.role === "VISITOR"
+      ? Math.min(environment.maxUploadBytes, environment.visitorUploadBytes)
+      : environment.maxUploadBytes;
   const policy = useGet<PolicyView>("/policies/active");
   const list = useGet<TransferPage>(`/transfers?limit=10&offset=${offset}`);
   function changeInput() {
@@ -555,7 +558,7 @@ function TransferDetail({ id }: { id: string }) {
           {data.scan && (
             <VerdictExplanation
               scan={data.scan}
-              privileged={auth!.user.role !== "EMPLOYEE"}
+              privileged={isPrivileged(auth!.user.role)}
             />
           )}
           <Failure error={action.error} />
@@ -614,7 +617,7 @@ function TransferDetail({ id }: { id: string }) {
                     malicious intent.
                   </p>
                   <code className="wrap">{data.incident_id}</code>
-                  {auth!.user.role !== "EMPLOYEE" && (
+                  {isPrivileged(auth!.user.role) && (
                     <Link
                       className="button secondary full"
                       to={"/incidents/" + data.incident_id}

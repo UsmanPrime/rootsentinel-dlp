@@ -152,6 +152,8 @@ OpenAPI and generated frontend contracts are checked in. Run
 | `hosted` | `true` when the server's configured origin is https; the interface shows "Hosted demo" or "Local" from this field, never from the hostname |
 | `commit` | the deployed commit (7 to 40 lowercase hex characters) from `ROOTSENTINEL_COMMIT`, else `RENDER_GIT_COMMIT`, else `unknown` |
 | `max_upload_bytes` | the upload cap the interface enforces before sending |
+| `visitor_mode` | `true` when [visitor mode](visitor-mode.md) is enabled; the sign-in page shows its button from this field |
+| `visitor_upload_bytes` | the lower upload cap of a visitor session |
 
 `/health` makes no database call, so a keep-alive request to it does not wake the database.
 With `ROOTSENTINEL_CLIENT_IP_HEADER` set, a `/health` request without a valid header is
@@ -175,3 +177,16 @@ A parameter outside its range answers 422. A size larger than the log, or a head
 404. `TRANSPARENCY_KEY_UNAVAILABLE` (503) means no signing key is configured; `AUDIT_LOG_INVALID` and
 `AUDIT_LOG_ROLLBACK` (503) mean the stored log failed its own checks and every audited action is refused.
 How to verify a head and a proof is in the [cryptographic specification](cryptographic-spec.md#audit-transparency-log-tree-and-signed-tree-heads).
+
+## Visitor mode additions
+
+| Route | Access |
+|---|---|
+| `POST /auth/visitor` | public; 404 while the mode is off; the sign-in Origin check, and a `Sec-Fetch-Site` header, when present, must be `same-origin` or `none`. Returns the session and a `visitor` object (`expires_at`, `idle_seconds`, `submissions_remaining`, `submissions_total`) |
+| `GET /visitor/audit/events`, `GET /visitor/transparency/key`, `GET /visitor/transparency/sth`, `GET /visitor/transparency/proof/inclusion` | VISITOR only; the visitor's own events and the signed head that covers them |
+| `include_visitors=true` on `GET /scans`, `GET /transfers`, `GET /incidents`, `GET /overview` | ADMIN only; by default these views exclude visitor sandboxes |
+
+`GET /audit/events` labels each event `actor_kind` as `VISITOR`, `ACCOUNT` or `SYSTEM`. Visitor error codes, all 429
+unless stated: `VISITOR_RATE_LIMIT`, `VISITOR_CAPACITY`, `VISITOR_DAILY_CAP`, `VISITOR_AUDIT_BUDGET`,
+`VISITOR_SCAN_CAP`, `VISITOR_RELEASE_CAP`; `VISITOR_SESSION_ENDED` is 401. The full list of routes a visitor may call,
+the caps and the audit arithmetic are in [visitor mode](visitor-mode.md).

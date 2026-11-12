@@ -12,7 +12,9 @@ from .schemas import DecisionView, DetectionView, MatchView, ProfileEvidence, Sc
 
 
 def run_scan(s, principal, filename, snapshot):
-    principal.require("ADMIN", "ANALYST", "EMPLOYEE")
+    principal.require("ADMIN", "ANALYST", "EMPLOYEE", "VISITOR")
+    if principal.role == "VISITOR":
+        s.info["synthetic_only"] = True
     fp = fingerprint_bytes(snapshot.data)
     state = lock_state(s)
     policy = active_policy(s, state)
@@ -36,7 +38,7 @@ def run_scan(s, principal, filename, snapshot):
 
 def get_scan(s, principal, scan_id):
     scan = s.get(ScanEvaluation, scan_id)
-    if scan is None or (principal.role == "EMPLOYEE" and scan.actor_id != principal.id):
+    if scan is None or (principal.own_only and scan.actor_id != principal.id):
         raise DomainError("NOT_FOUND", 404)
     matches = [MatchView(**{k: getattr(m, k) for k in MatchView.model_fields}) for m in s.scalars(
         select(MatchEvidence).where(MatchEvidence.scan_id == scan.id).order_by(MatchEvidence.version_id))]

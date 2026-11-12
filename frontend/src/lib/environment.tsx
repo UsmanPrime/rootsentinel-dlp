@@ -12,6 +12,10 @@ export type Environment = {
   hosted: boolean | null;
   commit: string;
   maxUploadBytes: number;
+  /** true when the server offers sandboxed visitor sessions (the kill switch is on). */
+  visitorMode: boolean;
+  /** The lower upload cap a visitor session enforces. */
+  visitorUploadBytes: number;
 };
 
 const DEFAULT_UPLOAD_CAP = 10485760;
@@ -19,6 +23,8 @@ const fallback: Environment = {
   hosted: null,
   commit: "unknown",
   maxUploadBytes: DEFAULT_UPLOAD_CAP,
+  visitorMode: false,
+  visitorUploadBytes: 65536,
 };
 const Context = createContext<Environment>(fallback);
 
@@ -35,6 +41,13 @@ export function parseHealth(body: unknown): Environment {
       typeof cap === "number" && Number.isInteger(cap) && cap >= 1024
         ? cap
         : DEFAULT_UPLOAD_CAP,
+    visitorMode: value.visitor_mode === true,
+    visitorUploadBytes:
+      typeof value.visitor_upload_bytes === "number" &&
+      Number.isInteger(value.visitor_upload_bytes) &&
+      value.visitor_upload_bytes >= 1024
+        ? value.visitor_upload_bytes
+        : 65536,
   };
 }
 

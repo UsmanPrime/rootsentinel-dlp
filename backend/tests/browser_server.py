@@ -14,7 +14,10 @@ from alembic.config import Config
 import uvicorn
 
 from app.api import create_app
+from app.audit import AuditService, KeyRing
 from app.audit_keys import provision, provision_signing
+from app.bootstrap import activate_rule_set, mark_synthetic, seed_assets
+from app.transparency import SigningKeys
 from app.auth import HASHER
 from app.config import StoragePaths, validate_external_path
 from app.db import Database
@@ -23,6 +26,7 @@ from app.settings import Settings, SOURCE_ROOT
 
 
 def main():
+    visitor = os.environ.get("ROOTSENTINEL_BROWSER_VISITOR") == "1"
     state = validate_external_path(Path(os.environ["ROOTSENTINEL_BROWSER_STATE"]), SOURCE_ROOT)
     state.mkdir(mode=0o700, parents=True, exist_ok=False)
     with tempfile.TemporaryDirectory(dir=state, prefix="session-") as external:
@@ -34,12 +38,21 @@ def main():
         settings = Settings(paths, f"sqlite:///{paths.database.as_posix()}", "local",
                             origin=os.environ.get("ROOTSENTINEL_ORIGIN", "http://127.0.0.1:5173"), secure_cookies=False, audit_key_file=key_file, checkpoint_root=Path(external) / "checkpoints", transparency_key_file=signing_file,
                             # Optional: serve a built interface from the API itself, as the hosted image does (enforced CSP).
-                            frontend_dir=Path(os.environ["ROOTSENTINEL_FRONTEND_DIR"]).resolve() if os.environ.get("ROOTSENTINEL_FRONTEND_DIR") else None)
+                            frontend_dir=Path(os.environ["ROOTSENTINEL_FRONTEND_DIR"]).resolve() if os.environ.get("ROOTSENTINEL_FRONTEND_DIR") else None,
+                            # Visitor journeys run against a separate harness (ROOTSENTINEL_BROWSER_VISITOR=1) so the other browser
+                            # scripts keep an empty registry.
+                            visitor_mode_enabled=visitor)
         cfg = Config(str(SOURCE_ROOT / "backend/alembic.ini"))
         cfg.attributes["settings"] = settings
         command.upgrade(cfg, "head")
         password = secrets.token_urlsafe(32)
         db = Database(settings.database_url)
+        if visitor:
+            # The synthetic seed assets and the content-defined rule set, as the hosted bootstrap leaves them.
+            audit = AuditService(KeyRing.load(key_file), settings.checkpoint_root, SigningKeys.load(signing_file))
+            seed_assets(db, audit)
+            mark_synthetic(db)
+            activate_rule_set(db, audit)
         with db.transaction() as s:
             s.add(User(username="browser-admin", role="ADMIN", password_hash=HASHER.hash(password)))
             # Isolated browser-only accounts share an ephemeral random credential.

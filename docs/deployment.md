@@ -109,6 +109,8 @@ instruction, DS031 a file path mistaken for a secret, DS026 no `HEALTHCHECK`). A
 | `ROOTSENTINEL_RETENTION_SECONDS` | 1 to 900 | 900 |
 | `ROOTSENTINEL_MAX_UPLOAD_BYTES` | 1024 to 10485760 (default 10 MiB) | 1048576 (1 MiB) |
 | `ROOTSENTINEL_TRANSFER_RATE_PER_MINUTE` | per account, 1 to 120 (default 30) | 10 |
+| `ROOTSENTINEL_VISITOR_MODE_ENABLED` | `true` turns on [visitor mode](visitor-mode.md); any other value or unset is off | `true` in `render.yaml` |
+| `ROOTSENTINEL_VISITOR_ENTRIES_PER_IP_HOUR`, `..._MAX_CONCURRENT`, `..._SESSIONS_PER_DAY`, `..._SCANS_PER_SESSION`, `..._UPLOAD_BYTES`, `..._AUDIT_CEILING` | visitor caps, each with a hard bound checked at startup | defaults 6, 10, 30, 3, 65536, 14000 |
 | `ROOTSENTINEL_TRANSPARENCY_KEY_FILE` | private Ed25519 key file that signs audit tree heads; a separate file from the audit keyring | set by the image; the entrypoint fills it from the secret file `transparency-key.json` |
 | `ROOTSENTINEL_COMMIT` | Docker build argument: the commit `/health` reports. CI passes the Git SHA | not set on Render; the app falls back to Render's `RENDER_GIT_COMMIT` |
 
@@ -321,6 +323,7 @@ The dates, thresholds and the keep-alive job itself are in the [demo runbook](de
   (see the [audit protocol](audit-spec.md#transparency-log-signed-tree-heads-over-the-chain)).
 * There is no forensic or compliance claim. Render and Neon account holders can reach the data. Free tiers can restart at any time:
   an in-flight release becomes `DELIVERY_UNKNOWN` and the transfer must be repeated.
+* Visitor mode (`ROOTSENTINEL_VISITOR_MODE_ENABLED=true` in `render.yaml`) adds at most 13,200 audit events over a three week window at the default caps, and stops admitting visitors at 14,000 ([visitor mode](visitor-mode.md)). Its caps are environment variables with hard bounds; leave them at the defaults unless the smoke output shows room.
 * The audit stream is capped at 20000 events; at the cap everything fails closed. Check the sequence number in the smoke output.
   Starting a new stream means a new database, which discards the old evidence on purpose.
 

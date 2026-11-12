@@ -102,6 +102,11 @@ def _store_cdc(s, version_id, chunks):
     s.add_all([AssetCdcChunk(version_id=version_id, offset=c.offset, length=c.length, sha256=c.sha256) for c in chunks])
 
 
+def synthetic_scope(s):
+    """Visitor scans match the synthetic seed assets only. run_scan sets this flag on the session."""
+    return (Asset.synthetic.is_(True),) if s.info.get("synthetic_only") else ()
+
+
 def _match_cdc(s, chunks) -> ProfileEvidence:
     """Look up the upload's chunk hashes. Per version, the matched bytes are the union of the matched upload
     chunks' byte intervals, so a protected chunk that repeats in the registry never counts twice."""
@@ -117,7 +122,7 @@ def _match_cdc(s, chunks) -> ProfileEvidence:
         rows = s.execute(select(AssetCdcChunk.version_id, AssetVersion.asset_id, AssetCdcChunk.sha256, AssetCdcChunk.length)
             .select_from(AssetCdcChunk).join(AssetVersion, AssetCdcChunk.version_id == AssetVersion.id)
             .join(Asset, AssetVersion.asset_id == Asset.id)
-            .where(Asset.retired.is_(False), Asset.current_version == AssetVersion.number,
+            .where(Asset.retired.is_(False), Asset.current_version == AssetVersion.number, *synthetic_scope(s),
                    AssetCdcChunk.sha256.in_(keys[start:start + CDC_LOOKUP_BATCH]))
             .distinct().order_by(AssetCdcChunk.version_id, AssetCdcChunk.sha256)
             .limit(detection.MAX_REFERENCES - references + 1)).all()

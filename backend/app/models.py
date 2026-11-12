@@ -15,7 +15,7 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(16))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=now)
-    __table_args__ = (CheckConstraint("role IN ('ADMIN','ANALYST','EMPLOYEE')", name="ck_user_role"),)
+    __table_args__ = (CheckConstraint("role IN ('ADMIN','ANALYST','EMPLOYEE','VISITOR')", name="ck_user_role"),)
 
 
 class SessionRecord(Base):
@@ -27,6 +27,21 @@ class SessionRecord(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=now)
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # Visitor sessions only: the last request, written at most once per VISITOR_SEEN_THROTTLE_SECONDS.
+    last_seen_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+
+class VisitorSession(Base):
+    """Counters and lifecycle of one visitor sandbox. session_id is not a foreign key: lazy cleanup deletes the
+    expired sessions row, and this row stays for the daily cap and the audit trail's meaning."""
+    __tablename__ = "visitor_sessions"
+    session_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), unique=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=now, index=True)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    submissions_used: Mapped[int] = mapped_column(Integer, default=0)
+    release_attempts_used: Mapped[int] = mapped_column(Integer, default=0)
+    ended_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
 
 class PolicyVersion(Base):
@@ -54,10 +69,15 @@ class RegistryState(Base):
 
 class Asset(Base):
     __tablename__ = "assets"
+    # synthetic has only a server default; a database from before migration 0006 has no such column, and the
+    # upgrade test registers on that schema, so the INSERT must neither write nor read it back.
+    __mapper_args__ = {"eager_defaults": False}
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     label: Mapped[str] = mapped_column(String(120), unique=True)
     current_version: Mapped[int] = mapped_column(Integer)
     retired: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # True only for the synthetic seed assets. Visitor scans are matched against these and nothing else.
+    synthetic: Mapped[bool] = mapped_column(Boolean, server_default="0")
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=now)
 
 

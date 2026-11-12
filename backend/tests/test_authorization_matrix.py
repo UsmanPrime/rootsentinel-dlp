@@ -18,8 +18,9 @@ from app.api import create_app
 OPENAPI = json.loads((Path(__file__).resolve().parents[2] / "docs" / "openapi.json").read_text(encoding="utf-8"))
 ROLES = ("EMPLOYEE", "ANALYST", "ADMIN")
 ACCOUNT = {"EMPLOYEE": "employee", "ANALYST": "analyst", "ADMIN": "admin"}
-ANY, PRIVILEGED, ADMIN_ONLY, OWNER, PUBLIC = "any", "privileged", "admin", "owner", "public"
-ALLOWED = {ANY: set(ROLES), PRIVILEGED: {"ANALYST", "ADMIN"}, ADMIN_ONLY: {"ADMIN"}, OWNER: {"EMPLOYEE"}, PUBLIC: set(ROLES)}
+ANY, PRIVILEGED, ADMIN_ONLY, OWNER, PUBLIC, VISITOR_ONLY = "any", "privileged", "admin", "owner", "public", "visitor"
+ALLOWED = {ANY: set(ROLES), PRIVILEGED: {"ANALYST", "ADMIN"}, ADMIN_ONLY: {"ADMIN"}, OWNER: {"EMPLOYEE"}, PUBLIC: set(ROLES),
+           VISITOR_ONLY: set()}
 
 # The access rule of every operation. OWNER: only the account that created the transfer (here the EMPLOYEE); other
 # roles get 404, admins included, because release has no administrative bypass.
@@ -66,6 +67,12 @@ ACCESS = {
     ("get", "/api/v1/transparency/proof/inclusion"): PRIVILEGED,
     ("get", "/api/v1/transparency/proof/consistency"): PRIVILEGED,
     ("get", "/api/v1/overview"): ANY,
+    # Visitor mode (Chunk V). Entry is public (404 while the mode is off); the visitor views belong to visitors only.
+    ("post", "/api/v1/auth/visitor"): PUBLIC,
+    ("get", "/api/v1/visitor/audit/events"): VISITOR_ONLY,
+    ("get", "/api/v1/visitor/transparency/key"): VISITOR_ONLY,
+    ("get", "/api/v1/visitor/transparency/sth"): VISITOR_ONLY,
+    ("get", "/api/v1/visitor/transparency/proof/inclusion"): VISITOR_ONLY,
 }
 PROTECTED = b"SYNTHETIC-PROTECTED-" * 128
 BENIGN = b"Public synthetic matrix bytes.\n" * 40
@@ -137,6 +144,7 @@ def call(client, method, path, ids, fresh_transfer=None):
         ("post", "/api/v1/transfers/fixtures"): {"json": {"fixture": "benign"}, "headers": key},
         ("patch", "/api/v1/incidents/{identifier}"): {"json": {"expected_revision": 999, "status": "INVESTIGATING", "note": ""}},
         ("get", "/api/v1/transparency/proof/inclusion"): {"params": {"leaf_index": 0, "tree_size": 1}},
+        ("get", "/api/v1/visitor/transparency/proof/inclusion"): {"params": {"leaf_index": 0, "tree_size": 1}},
         ("get", "/api/v1/transparency/proof/consistency"): {"params": {"first": 1, "second": 1}},
     }
     return client.request(method.upper(), route, **bodies.get((method, path), {}))
@@ -179,7 +187,7 @@ def test_anonymous_callers_are_refused_everywhere_but_sign_in(system, method, pa
     assert response.status_code == 401 and response.json()["error"]["code"] == "AUTHENTICATION_REQUIRED", (method, path)
 
 
-MUTATIONS = sorted(op for op in ACCESS if op[0] != "get" and op != ("post", "/api/v1/auth/login"))
+MUTATIONS = sorted(op for op in ACCESS if op[0] != "get" and op not in {("post", "/api/v1/auth/login"), ("post", "/api/v1/auth/visitor")})
 
 
 @pytest.mark.parametrize("method,path", MUTATIONS)

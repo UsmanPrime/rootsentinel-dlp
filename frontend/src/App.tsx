@@ -37,7 +37,9 @@ import {
 import { api, jsonBody } from "./api";
 import { Dialog, Empty, Failure, Loading, Notice } from "./components/ui";
 import { useAction, useTitle } from "./lib/hooks";
-import { SessionProvider, useSession } from "./lib/session";
+import { SessionProvider, isPrivileged, useSession } from "./lib/session";
+import { ApiError } from "./api";
+import { errorMessage } from "./lib/errors";
 import {
   EnvironmentProvider,
   environmentLabel,
@@ -54,9 +56,16 @@ const Integrity = lazy(() => import("./features/integrity/Integrity"));
 const Incidents = lazy(() => import("./features/incidents/Incidents"));
 const Audit = lazy(() => import("./features/audit/Audit"));
 const Policies = lazy(() => import("./features/policies/Policies"));
+const SandboxAudit = lazy(() => import("./features/sandbox/SandboxAudit"));
 const Guide = lazy(() => import("./features/guide/Guide"));
 
-const navigation = [
+const navigation: {
+  path: string;
+  name: string;
+  icon: typeof Activity;
+  privileged: boolean;
+  visitorOnly?: boolean;
+}[] = [
   { path: "/", name: "Overview", icon: LayoutDashboard, privileged: false },
   {
     path: "/transfers",
@@ -84,6 +93,13 @@ const navigation = [
     icon: SlidersHorizontal,
     privileged: false,
   },
+  {
+    path: "/sandbox-audit",
+    name: "My audit trail",
+    icon: Activity,
+    privileged: false,
+    visitorOnly: true,
+  },
   { path: "/guide", name: "Guided Demo", icon: BookOpen, privileged: false },
 ];
 
@@ -107,7 +123,20 @@ function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const environment = useEnvironment();
+  const visitorAction = useAction();
   if (session.auth) return <Navigate to="/" replace />;
+  function exploreAsVisitor() {
+    void visitorAction
+      .run(() => api<AuthView>("/auth/visitor", { method: "POST" }))
+      .then((auth) => {
+        if (!auth) return;
+        session.setAuth(auth);
+        navigate("/", { replace: true });
+      });
+  }
+  const visitorRefused =
+    visitorAction.error instanceof ApiError &&
+    visitorAction.error.code.startsWith("VISITOR_");
   function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -192,8 +221,40 @@ function Login() {
           {session.expired && (
             <Notice>Your session ended. Sign in again to continue.</Notice>
           )}
+          {session.visitorEnded && (
+            <div className="visitor-ended" role="status">
+              <h3>Your visitor session has ended</h3>
+              <p>
+                Visitor sessions last 30 minutes at most and end after 10
+                minutes without activity. Everything you did stays in the audit
+                record; nothing real was touched.
+              </p>
+              {environment.visitorMode && (
+                <button
+                  className="button primary"
+                  disabled={visitorAction.busy}
+                  onClick={exploreAsVisitor}
+                >
+                  Start a new visitor session
+                </button>
+              )}
+            </div>
+          )}
+          {visitorRefused && (
+            <div className="visitor-ended" role="alert">
+              <h3>Visitor access is unavailable right now</h3>
+              <p>{errorMessage(visitorAction.error)}</p>
+              <p>Signing in with an account below still works.</p>
+            </div>
+          )}
           <Failure
-            error={action.error || session.problem}
+            error={
+              action.error ||
+              session.problem ||
+              (visitorAction.error && !visitorRefused
+                ? visitorAction.error
+                : null)
+            }
             retry={session.problem ? session.check : undefined}
           />
           <form onSubmit={signIn} className="form-stack">
@@ -221,6 +282,22 @@ function Login() {
               <ArrowRight size={16} />
             </button>
           </form>
+          {environment.visitorMode && (
+            <div className="visitor-entry">
+              <p className="muted">
+                No account? Run the real flow in a sandbox of synthetic files.
+                No password, no real data, ends after 30 minutes.
+              </p>
+              <button
+                type="button"
+                className="button secondary full"
+                disabled={visitorAction.busy}
+                onClick={exploreAsVisitor}
+              >
+                {visitorAction.busy ? "Opening sandbox…" : "Explore as visitor"}
+              </button>
+            </div>
+          )}
           <div className="login-note">
             <Shield size={17} />
             <p>
@@ -245,9 +322,11 @@ function Login() {
 function Protected({
   children,
   privileged = false,
+  visitorOnly = false,
 }: {
   children: ReactNode;
   privileged?: boolean;
+  visitorOnly?: boolean;
 }) {
   const { auth, checking, problem, check } = useSession();
   const location = useLocation();
@@ -270,7 +349,10 @@ function Protected({
         state={{ from: location.pathname + location.search }}
       />
     );
-  if (privileged && auth.user.role === "EMPLOYEE")
+  if (
+    (privileged && !isPrivileged(auth.user.role)) ||
+    (visitorOnly && auth.user.role !== "VISITOR")
+  )
     return (
       <Empty
         level={1}
@@ -281,8 +363,8 @@ function Protected({
           </Link>
         }
       >
-        Your employee role can submit transfers and inspect your own results.
-        This workspace requires an analyst or administrator.
+        Your role can submit transfers and inspect your own results. This
+        workspace requires an analyst or administrator.
       </Empty>
     );
   return children;
@@ -297,7 +379,8 @@ function Shell() {
   const [invite, setInvite] = useState(() => !tourSeen());
   const environment = useEnvironment();
   const label = environmentLabel(environment.hosted);
-  const privileged = auth!.user.role !== "EMPLOYEE";
+  const privileged = isPrivileged(auth!.user.role);
+  const visitor = auth!.visitor;
   const main = useRef<HTMLElement>(null);
   const active = navigation.find((x) =>
     x.path === "/"
@@ -312,7 +395,11 @@ function Shell() {
   const links = (
     <nav aria-label="Main navigation">
       {navigation
-        .filter((x) => !x.privileged || auth!.user.role !== "EMPLOYEE")
+        .filter(
+          (x) =>
+            (!x.privileged || privileged) &&
+            (!x.visitorOnly || auth!.user.role === "VISITOR"),
+        )
         .map(({ path, name, icon: Icon }) => (
           <NavLink
             key={path}
@@ -346,6 +433,20 @@ function Shell() {
         </div>
       </aside>
       <div className="main-column">
+        {visitor && (
+          <div className="visitor-banner" role="status">
+            <strong>Visitor mode</strong>
+            <span>Synthetic data only. Nothing here is real.</span>
+            <span>
+              Session ends {new Date(visitor.expires_at).toLocaleTimeString()}{" "}
+              at the latest
+            </span>
+            <span>
+              {visitor.submissions_remaining} of {visitor.submissions_total}{" "}
+              submissions left
+            </span>
+          </div>
+        )}
         <header className="app-topbar">
           <div className="breadcrumb">
             <button
@@ -503,6 +604,14 @@ export default function App() {
                   }
                 />
                 <Route path="policies" element={<Policies />} />
+                <Route
+                  path="sandbox-audit"
+                  element={
+                    <Protected visitorOnly>
+                      <SandboxAudit />
+                    </Protected>
+                  }
+                />
                 <Route path="guide" element={<Guide />} />
                 <Route
                   path="*"

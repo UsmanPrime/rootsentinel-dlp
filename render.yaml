@@ -33,3 +33,5 @@ services:
         value: "1048576"              # 1 MiB for the hosted demo (the backend default is 10 MiB)
       - key: ROOTSENTINEL_TRANSFER_RATE_PER_MINUTE
         value: "10"
+      - key: ROOTSENTINEL_VISITOR_MODE_ENABLED
+        value: "true"                 # sandboxed visitor sessions; see docs/visitor-mode.md (caps keep their defaults)

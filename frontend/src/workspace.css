@@ -1928,3 +1928,45 @@ dialog p {
     padding-right: 6px;
   }
 }
+
+/* Visitor mode (Chunk V): no inline styles anywhere, so every rule lives here. */
+.visitor-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  align-items: center;
+  padding: 9px 24px;
+  background: #3a2f12;
+  border-bottom: 1px solid #8a6d1f;
+  color: #f3dfa6;
+  font-size: 12px;
+}
+.visitor-banner strong {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.visitor-entry {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.visitor-entry p {
+  margin: 0 0 12px;
+  font-size: 12px;
+}
+.visitor-ended {
+  background: #172c34;
+  border: 1px solid #3e626f;
+  border-radius: 7px;
+  padding: 16px 18px;
+  margin: 16px 0;
+  font-size: 12px;
+  color: #d1e5ed;
+}
+.visitor-ended h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.visitor-ended p {
+  margin: 0 0 10px;
+}

@@ -28,6 +28,18 @@ def build_commit(environ=None) -> str:
     return "unknown"
 
 
+# (field, lowest, highest) for every operator-tunable visitor cap. The audit ceiling stays below the 20000 event
+# audit capacity, so real users always keep room.
+VISITOR_BOUNDS = (
+    ("visitor_entries_per_ip_hour", 1, 60),
+    ("visitor_max_concurrent", 1, 50),
+    ("visitor_sessions_per_day", 1, 200),
+    ("visitor_scans_per_session", 1, 10),
+    ("visitor_upload_bytes", 1024, 262144),
+    ("visitor_audit_ceiling", 1000, 18000),
+)
+
+
 def _integer(name: str, default: int) -> int:
     raw = os.environ.get(name)
     if raw is None or raw.strip() == "":
@@ -62,6 +74,19 @@ class Settings:
     commit: str = "unknown"
     # The Ed25519 key file that signs audit tree heads. A separate secret from the HMAC keyring above.
     transparency_key_file: Path | None = None
+    # Visitor mode (Chunk V). Off unless explicitly enabled. Every cap has a hard upper bound checked below.
+    visitor_mode_enabled: bool = False
+    visitor_entries_per_ip_hour: int = 6
+    visitor_max_concurrent: int = 10
+    visitor_sessions_per_day: int = 30
+    visitor_scans_per_session: int = 3
+    visitor_upload_bytes: int = 65536
+    visitor_audit_ceiling: int = 14000
+
+    @property
+    def visitor_upload_limit(self) -> int:
+        """The upload cap a visitor session enforces: never above the general cap."""
+        return min(self.visitor_upload_bytes, self.max_upload_bytes)
 
     @property
     def hosted(self) -> bool:
@@ -97,6 +122,9 @@ class Settings:
             raise ValueError("Upload cap must be 1024 through 10485760 bytes")
         if not 1 <= self.transfer_rate_per_minute <= 120:
             raise ValueError("Transfer rate must be 1 through 120 per minute")
+        for name, low, high in VISITOR_BOUNDS:
+            if not low <= getattr(self, name) <= high:
+                raise ValueError(f"{name} must be {low} through {high}")
         if any(HOST_PATTERN.fullmatch(host) is None for host in self.extra_hosts):
             raise ValueError("Extra hosts must be exact lowercase host names (optional port); wildcards are not allowed")
         if self.frontend_dir is not None and not self.frontend_dir.is_absolute():
@@ -135,6 +163,13 @@ class Settings:
             transfer_rate_per_minute=_integer("ROOTSENTINEL_TRANSFER_RATE_PER_MINUTE", 30),
             client_ip_header=os.environ.get("ROOTSENTINEL_CLIENT_IP_HEADER", "").strip(),
             commit=build_commit(),
+            visitor_mode_enabled=os.environ.get("ROOTSENTINEL_VISITOR_MODE_ENABLED", "false").strip().lower() == "true",
+            visitor_entries_per_ip_hour=_integer("ROOTSENTINEL_VISITOR_ENTRIES_PER_IP_HOUR", 6),
+            visitor_max_concurrent=_integer("ROOTSENTINEL_VISITOR_MAX_CONCURRENT", 10),
+            visitor_sessions_per_day=_integer("ROOTSENTINEL_VISITOR_SESSIONS_PER_DAY", 30),
+            visitor_scans_per_session=_integer("ROOTSENTINEL_VISITOR_SCANS_PER_SESSION", 3),
+            visitor_upload_bytes=_integer("ROOTSENTINEL_VISITOR_UPLOAD_BYTES", 65536),
+            visitor_audit_ceiling=_integer("ROOTSENTINEL_VISITOR_AUDIT_CEILING", 14000),
             transparency_key_file=Path(os.environ["ROOTSENTINEL_TRANSPARENCY_KEY_FILE"]) if os.environ.get("ROOTSENTINEL_TRANSPARENCY_KEY_FILE") else None,
         )
 

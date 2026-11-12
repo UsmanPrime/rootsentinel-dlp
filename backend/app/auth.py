@@ -35,6 +35,11 @@ class Principal:
     role: str
     session_id: str
 
+    @property
+    def own_only(self) -> bool:
+        """EMPLOYEE and VISITOR see only their own scans and transfers."""
+        return self.role in ("EMPLOYEE", "VISITOR")
+
     def require(self, *roles):
         if self.role not in roles:
             raise DomainError("FORBIDDEN", 403)
@@ -75,15 +80,20 @@ class AuthService:
         self.limiter = LoginLimiter()
         self.hash_slots = BoundedSemaphore(2)
         self.dummy_hash = HASHER.hash(secrets.token_urlsafe(32))
+        # Set by create_app once the audit service exists. Visitor sessions are refused while it is None.
+        self.visitors = None
 
     def login(self, username: str, password: str, peer: str, previous: str | None):
         self.limiter.check(peer, username)
         if not self.hash_slots.acquire(blocking=False):
             raise DomainError("LOGIN_CAPACITY", 503)
         try:
-            return self._login(username, password, previous)
+            result = self._login(username, password, previous)
         finally:
             self.hash_slots.release()
+        if self.visitors is not None:
+            self.visitors.cleanup()  # lazy and bounded; never raises, never delays or fails a sign-in
+        return result
 
     def _login(self, username, password, previous):
         with self.db.transaction() as s:
@@ -92,7 +102,7 @@ class AuthService:
                 valid = HASHER.verify(user.password_hash if user else self.dummy_hash, password)
             except (VerificationError, InvalidHashError):
                 valid = False
-            if not valid or user is None or not user.enabled:
+            if not valid or user is None or not user.enabled or user.role == "VISITOR":
                 raise DomainError("INVALID_CREDENTIALS", 401)
             if HASHER.check_needs_rehash(user.password_hash):
                 user.password_hash = HASHER.hash(password)
@@ -112,6 +122,10 @@ class AuthService:
             if row is None:
                 raise DomainError("AUTHENTICATION_REQUIRED", 401)
             session, user = row
+            if user.role == "VISITOR" and not session.revoked_at and user.enabled:
+                if self.visitors is None:
+                    raise DomainError("AUTHENTICATION_REQUIRED", 401)
+                self.visitors.check_session(s, session, user)  # ends the sandbox on absolute or idle expiry
             if session.revoked_at or session.expires_at <= now() or not user.enabled:
                 raise DomainError("AUTHENTICATION_REQUIRED", 401)
             if mutation and (not csrf or len(csrf) != 64 or not compare_digest(session.csrf_digest, digest(csrf))):
@@ -119,5 +133,7 @@ class AuthService:
             return Principal(user.id, user.username, user.role, session.id)
 
     def logout(self, principal: Principal):
+        if principal.role == "VISITOR" and self.visitors is not None:
+            return self.visitors.end(principal)
         with self.db.transaction() as s:
             s.execute(update(SessionRecord).where(SessionRecord.id == principal.session_id).values(revoked_at=now()))

@@ -11,7 +11,7 @@ def inject(state: Path, operation: str, identifier: str | None = None):
     if len(candidates) != 1 or root not in candidates[0].resolve().parents:
         raise ValueError("Exactly one contained browser database required")
     with sqlite3.connect(candidates[0]) as connection:
-        users = {row[0] for row in connection.execute("SELECT username FROM users")}
+        users = {row[0] for row in connection.execute("SELECT username FROM users") if not row[0].startswith("visitor-") and row[0] != "system-bootstrap"}
         if users != {"browser-admin", "browser-analyst", "browser-employee", "browser-other"}:
             raise ValueError("Refusing non-harness database")
         if operation == "expire":

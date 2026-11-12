@@ -13,7 +13,7 @@ import {
 } from "../../components/ui";
 import { useAction, useGet, useTitle } from "../../lib/hooks";
 import { date, short } from "../../lib/errors";
-import { useSession } from "../../lib/session";
+import { isPrivileged, useSession } from "../../lib/session";
 import { useToast } from "../../lib/toast";
 import type { PolicyPage, PolicyView } from "../../lib/contracts";
 
@@ -34,7 +34,7 @@ export default function Policies() {
   const [saved, setSaved] = useState<number>();
   const active = useGet<PolicyView>("/policies/active");
   const history = useGet<PolicyPage>(
-    auth!.user.role !== "EMPLOYEE"
+    isPrivileged(auth!.user.role)
       ? `/policies/history?limit=10&offset=${offset}`
       : null,
   );

@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 Label = Annotated[str, StringConstraints(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9][A-Za-z0-9 ._()-]*$")]
 Username = Annotated[str, StringConstraints(min_length=3, max_length=64, pattern=r"^[a-z0-9][a-z0-9_.-]*$")]
-Role = Literal["ADMIN", "ANALYST", "EMPLOYEE"]
+Role = Literal["ADMIN", "ANALYST", "EMPLOYEE", "VISITOR"]
 
 
 class Schema(BaseModel):
@@ -24,9 +24,17 @@ class UserView(Schema):
     role: Role
 
 
+class VisitorInfo(Schema):
+    expires_at: datetime
+    idle_seconds: int
+    submissions_remaining: int
+    submissions_total: int
+
+
 class AuthView(Schema):
     user: UserView
     csrf_token: str
+    visitor: VisitorInfo | None = None
 
 
 RuleSet = Literal["rs-policy-v1", "rs-policy-v2"]

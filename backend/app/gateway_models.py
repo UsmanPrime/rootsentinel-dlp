@@ -81,6 +81,9 @@ class AuditEvent(Base):
     stream_id: Mapped[str] = mapped_column(ForeignKey("audit_heads.stream_id"))
     sequence: Mapped[int] = mapped_column(Integer, unique=True)
     resource_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    # Copy of the actor inside the canonical payload, for filtering. Integrity verification checks that it agrees
+    # with the payload. NULL on events written before migration 0006. Not part of the HMAC'd bytes.
+    actor_id: Mapped[str | None] = mapped_column(String(36), index=True)
     canonical: Mapped[str] = mapped_column(Text)
     mac: Mapped[str] = mapped_column(String(64))
 

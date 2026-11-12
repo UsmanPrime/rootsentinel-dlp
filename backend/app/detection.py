@@ -18,7 +18,9 @@ def detect(s, fingerprint: Fingerprint, revision: int) -> DetectionView:
     if m.profile_id != PROFILE_ID:
         raise Indeterminate("UNSUPPORTED_PROFILE")
     active = (Asset.retired.is_(False), Asset.current_version == AssetVersion.number,
-              AssetVersion.profile_id == m.profile_id)
+              AssetVersion.profile_id == m.profile_id,
+              # A visitor's scan (run_scan sets the flag) is matched against the synthetic seed assets only.
+              *((Asset.synthetic.is_(True),) if s.info.get("synthetic_only") else ()))
     exact = s.execute(select(AssetVersion.id, AssetVersion.asset_id).join(Asset).where(
         *active, AssetVersion.file_size == m.file_size, AssetVersion.file_sha256 == m.file_sha256
     ).order_by(AssetVersion.id).limit(MAX_MATCHED_VERSIONS + 1)).all()

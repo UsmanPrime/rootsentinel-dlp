@@ -66,6 +66,8 @@ describe("hosted badge comes from the server's /health, never from the hostname"
       hosted: null,
       commit: "unknown",
       maxUploadBytes: 10485760,
+      visitorMode: false,
+      visitorUploadBytes: 65536,
     });
     expect(
       parseHealth({ hosted: true, commit: "0123abc", max_upload_bytes: 2048 }),
@@ -73,7 +75,18 @@ describe("hosted badge comes from the server's /health, never from the hostname"
       hosted: true,
       commit: "0123abc",
       maxUploadBytes: 2048,
+      visitorMode: false,
+      visitorUploadBytes: 65536,
     });
+    expect(
+      parseHealth({
+        visitor_mode: true,
+        visitor_upload_bytes: 4096,
+        max_upload_bytes: 8192,
+      }),
+    ).toMatchObject({ visitorMode: true, visitorUploadBytes: 4096 });
+    // Only the literal true turns the visitor entry on; a truthy string does not.
+    expect(parseHealth({ visitor_mode: "true" }).visitorMode).toBe(false);
   });
 });
 

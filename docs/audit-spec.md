@@ -181,3 +181,12 @@ than the gateway, on a schedule you choose; it is a request with a session, so i
 
 Tests: `test_transparency_tree.py`, `test_transparency_log.py`, `test_witness.py`, the idle test in `test_idle.py`,
 the browser suite's Audit log check, and `frontend/src/lib/transparency.test.ts`.
+
+## Visitor events and the actor column
+
+Three event kinds were added for [visitor mode](visitor-mode.md): `VISITOR_ENTERED`, `VISITOR_ENDED` (sign out) and
+`VISITOR_EXPIRED` (written by lazy cleanup). `audit_events.actor_id` (migration 0006) repeats the payload's
+`actor_id` so a view can filter on it. It is not part of the canonical payload or the MAC, and the canonical bytes did
+not change. Verification (`check_event`, `verify_records`) fails an event whose non-null column differs from the
+payload; a null column is accepted because events written before the migration have none. Rejected requests (403, 429
+and the 404 of a disabled mode) write no event.

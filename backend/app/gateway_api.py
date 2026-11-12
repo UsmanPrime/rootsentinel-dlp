@@ -17,6 +17,8 @@ from .audit import MAX_EVENTS
 from .auth import Principal
 from .errors import DomainError
 from .gateway_models import AuditEvent, Incident, Transfer, TransparencyHead
+from .models import User
+from .visitors import visitor_user_ids
 from .gateway_schemas import (AuditPage, AuditVerification, ConsistencyProofView, IncidentPage, IncidentPatch, IncidentView, InclusionProofView,
                               TransferPage, TransferView, TransferSummary, TransparencyKeyView, TreeHeadView)
 from .db import now
@@ -107,7 +109,7 @@ def install_routes(app, principal, intake):
         openapi_extra={"requestBody": {"required": True, "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}})
     async def submit(request: Request, actor: Actor, idempotency_key: Retry, filename: Label = "candidate.bin"):
         limiter.check(actor.id)
-        return await intake(request, lambda snapshot: gateway.submit(actor, filename, snapshot, str(idempotency_key)))
+        return await intake(request, lambda snapshot: gateway.submit(actor, filename, snapshot, str(idempotency_key)), actor)
 
     @app.post("/api/v1/transfers/fixtures", response_model=TransferView, status_code=201)
     async def fixture(body: FixtureChoice, actor: Actor, idempotency_key: Retry):
@@ -125,10 +127,14 @@ def install_routes(app, principal, intake):
             app.state.intake_slots.release_on_behalf_of(borrower)
 
     @app.get("/api/v1/transfers", response_model=TransferPage)
-    def listing(actor: Actor, limit: Limit = 25, offset: Offset = 0):
+    def listing(actor: Actor, limit: Limit = 25, offset: Offset = 0, include_visitors: bool = False):
         query = select(Transfer)
-        if actor.role == "EMPLOYEE":
+        if include_visitors:
+            actor.require("ADMIN")  # visitor sandboxes are hidden from real users unless an administrator asks
+        if actor.own_only:
             query = query.where(Transfer.actor_id == actor.id)
+        elif not include_visitors:
+            query = query.where(Transfer.actor_id.not_in(visitor_user_ids()))
         with db.transaction() as s:
             rows = s.scalars(query.order_by(Transfer.created_at.desc(), Transfer.id).offset(offset).limit(limit)).all()
             return TransferPage(items=[TransferSummary(**{k: getattr(t, k) for k in TransferSummary.model_fields if k != "release_eligible"},
@@ -143,6 +149,8 @@ def install_routes(app, principal, intake):
               responses={200: {"content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}})
     async def release(identifier: UUID, actor: Actor):
         limiter.check(actor.id)
+        if actor.role == "VISITOR":
+            await run_in_threadpool(app.state.visitors.consume_release_attempt, actor)
         borrower = object()
         try:
             app.state.intake_slots.acquire_on_behalf_of_nowait(borrower)
@@ -157,9 +165,14 @@ def install_routes(app, principal, intake):
 
     @app.get("/api/v1/incidents", response_model=IncidentPage)
     def incidents(actor: Actor, limit: Limit = 25, offset: Offset = 0, status: Literal["OPEN", "INVESTIGATING", "RESOLVED"] | None = None,
-                  severity: Literal["HIGH", "MEDIUM"] | None = None, order: Literal["newest", "oldest"] = "newest"):
+                  severity: Literal["HIGH", "MEDIUM"] | None = None, order: Literal["newest", "oldest"] = "newest",
+                  include_visitors: bool = False):
         actor.require("ADMIN", "ANALYST")
+        if include_visitors:
+            actor.require("ADMIN")
         query = select(Incident)
+        if not include_visitors:
+            query = query.where(Incident.transfer_id.not_in(select(Transfer.id).where(Transfer.actor_id.in_(visitor_user_ids()))))
         if status:
             query = query.where(Incident.status == status)
         if severity:
@@ -188,8 +201,13 @@ def install_routes(app, principal, intake):
     def events(actor: Actor, limit: Limit = 25, after: Annotated[int, Query(ge=0, le=20000)] = 0):
         actor.require("ADMIN", "ANALYST")
         with db.transaction() as s:
-            rows = s.scalars(select(AuditEvent).where(AuditEvent.sequence > after).order_by(AuditEvent.sequence).limit(limit))
-            return AuditPage(events=[{"event": json.loads(row.canonical), "mac": row.mac} for row in rows], after=after, limit=limit)
+            rows = s.scalars(select(AuditEvent).where(AuditEvent.sequence > after).order_by(AuditEvent.sequence).limit(limit)).all()
+            events = [json.loads(row.canonical) for row in rows]
+            # The chain is shown whole (a view with holes would look like tampering); visitor events are labelled.
+            actors = {e["actor_id"] for e in events if e["actor_id"]}
+            visitors = set(s.scalars(select(User.id).where(User.id.in_(actors), User.role == "VISITOR"))) if actors else set()
+            kind = lambda e: "SYSTEM" if not e["actor_id"] else "VISITOR" if e["actor_id"] in visitors else "ACCOUNT"
+            return AuditPage(events=[{"event": e, "mac": row.mac, "actor_kind": kind(e)} for e, row in zip(events, rows)], after=after, limit=limit)
 
     @app.post("/api/v1/audit/verify", response_model=AuditVerification)
     def verify(actor: Actor):
@@ -262,6 +280,44 @@ def install_routes(app, principal, intake):
         with db.transaction() as s:
             gateway.audit.synced(s)
             return gateway.audit.log.consistency(first, second)
+
+    # ---- the visitor's own audit view. Dedicated routes: the privileged routes above carry no visitor branch.
+    @app.get("/api/v1/visitor/audit/events", response_model=AuditPage)
+    def visitor_events(actor: Actor, limit: Limit = 25, after: Annotated[int, Query(ge=0, le=20000)] = 0):
+        actor.require("VISITOR")
+        with db.transaction() as s:
+            rows = s.scalars(select(AuditEvent).where(AuditEvent.actor_id == actor.id, AuditEvent.sequence > after)
+                             .order_by(AuditEvent.sequence).limit(limit)).all()
+            events = [(json.loads(row.canonical), row) for row in rows]
+            # Defence in depth: the column is only a filter; the HMAC'd payload decides.
+            return AuditPage(events=[{"event": e, "mac": row.mac, "actor_kind": "VISITOR"} for e, row in events
+                                     if e["actor_id"] == actor.id], after=after, limit=limit)
+
+    @app.get("/api/v1/visitor/transparency/key", response_model=TransparencyKeyView)
+    def visitor_key(actor: Actor):
+        actor.require("VISITOR")
+        return gateway.audit.log.keys_view()
+
+    @app.get("/api/v1/visitor/transparency/sth", response_model=TreeHeadView)
+    def visitor_head(actor: Actor):
+        actor.require("VISITOR")
+        with db.transaction() as s:
+            row = gateway.audit.log.latest(s)
+            if row is None:
+                raise DomainError("NOT_FOUND", 404)
+            return head_view(row)
+
+    @app.get("/api/v1/visitor/transparency/proof/inclusion", response_model=InclusionProofView)
+    def visitor_inclusion(actor: Actor, leaf_index: Annotated[int, Query(ge=0, le=MAX_EVENTS - 1)], tree_size: Size):
+        actor.require("VISITOR")
+        if leaf_index >= tree_size:
+            raise DomainError("INVALID_REQUEST", 422)
+        with db.transaction() as s:
+            # Only an event this visitor produced; any other index looks like a missing one.
+            if s.scalar(select(AuditEvent.id).where(AuditEvent.sequence == leaf_index + 1, AuditEvent.actor_id == actor.id)) is None:
+                raise DomainError("NOT_FOUND", 404)
+            gateway.audit.synced(s)
+            return gateway.audit.log.inclusion(leaf_index, tree_size)
 
     @app.post("/api/v1/transfers-maintenance/expire")
     def expire(actor: Actor):

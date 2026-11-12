@@ -30,6 +30,20 @@ const messages: Record<string, string> = {
     "Another investigator updated this incident. Refresh before trying again.",
   EMPTY_PROTECTED_ASSET:
     "Empty files can be scanned, but cannot be registered as protected assets.",
+  VISITOR_SESSION_ENDED:
+    "Your visitor session has ended. Start a new one to keep exploring.",
+  VISITOR_RATE_LIMIT:
+    "Too many visitor sessions were started from your network recently. Try again later, or sign in with an account.",
+  VISITOR_CAPACITY:
+    "The demonstration is at its limit of simultaneous visitors. Try again in a few minutes.",
+  VISITOR_DAILY_CAP:
+    "Today's visitor sessions are used up. Try again tomorrow, or sign in with an account.",
+  VISITOR_AUDIT_BUDGET:
+    "The visitor sandbox is paused to protect the shared audit log. Sign in with an account, or try again later.",
+  VISITOR_SCAN_CAP:
+    "This visitor session has used all of its scans. Start a new session to continue.",
+  VISITOR_RELEASE_CAP:
+    "This visitor session has used all of its release attempts. Start a new session to continue.",
   RESOLUTION_REQUIRED:
     "Enter a resolution reason before closing this incident.",
 };

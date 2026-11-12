@@ -51,3 +51,11 @@ class StoragePaths:
         if _contains(runtime, artifacts) or _contains(artifacts, runtime):
             raise ValueError("Runtime and artifacts must not overlap")
         return cls(runtime, artifacts)
+
+
+# Visitor mode constants (Chunk V). The caps an operator may tune are Settings fields with hard bounds;
+# these are fixed by design.
+VISITOR_ABSOLUTE_SECONDS = 1800     # a visitor session ends 30 minutes after entry and is never extended
+VISITOR_IDLE_SECONDS = 600          # and after 10 minutes without a request (see VISITOR_SEEN_THROTTLE_SECONDS)
+VISITOR_SEEN_THROTTLE_SECONDS = 60  # last_seen_at is written at most once per 60 s per session
+VISITOR_CLEANUP_BATCH = 50          # expired visitor sessions handled per lazy cleanup

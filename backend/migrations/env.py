@@ -17,7 +17,10 @@ if context.is_offline_mode():
 else:
     db = Database(settings.database_url)
     with db.engine.connect() as connection:
-        context.configure(connection=connection, target_metadata=Base.metadata, compare_type=True)
+        # SQLite: one transaction per migration, so a migration that rebuilds a referenced table can switch
+        # foreign keys off before it writes anything (PRAGMA foreign_keys is a no-op inside a transaction).
+        context.configure(connection=connection, target_metadata=Base.metadata, compare_type=True,
+                          transaction_per_migration=connection.dialect.name == "sqlite")
         with context.begin_transaction():
             context.run_migrations()
     db.engine.dispose()

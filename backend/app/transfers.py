@@ -44,6 +44,7 @@ class Gateway:
         # the registry lock, and a failed pass resets it to "now".
         self.next_due = None
         self.due_lock = Lock()
+        self.visitors = None  # set by create_app
 
     def note_due(self, when):
         with self.due_lock:
@@ -66,7 +67,7 @@ class Gateway:
 
     def owned(self, s, actor, identifier, release=False):
         transfer = s.get(Transfer, identifier)
-        if transfer is None or ((release or actor.role == "EMPLOYEE") and transfer.actor_id != actor.id):
+        if transfer is None or ((release or actor.own_only) and transfer.actor_id != actor.id):
             raise DomainError("NOT_FOUND", 404)
         return transfer
 
@@ -78,7 +79,7 @@ class Gateway:
             scan=scan, incident_id=incident, release_eligible=t.state == "ALLOWED" and t.expires_at > now() and t.actor_id == actor.id)
 
     def submit(self, actor, filename, snapshot, idempotency_key):
-        actor.require("ADMIN", "ANALYST", "EMPLOYEE")
+        actor.require("ADMIN", "ANALYST", "EMPLOYEE", "VISITOR")
         digest = sha256(snapshot.data).hexdigest()
         created = False
         try:
@@ -89,6 +90,8 @@ class Gateway:
                     if previous.filename != filename or previous.file_sha256 != digest or previous.file_size != len(snapshot.data):
                         raise DomainError("IDEMPOTENCY_CONFLICT", 409)
                     return self.view(s, actor, previous.id)
+                if actor.role == "VISITOR":
+                    self.visitors.consume_submission(s, actor)  # per session cap and audit ceiling; refusals write nothing
                 pending = select(func.count()).select_from(Transfer).where(Transfer.state.in_(["SCANNING", "ALLOWED", "RELEASE_STARTED"]))
                 if s.scalar(pending) >= 20 or s.scalar(pending.where(Transfer.actor_id == actor.id)) >= 10:
                     raise DomainError("PENDING_TRANSFER_CAPACITY", 429)

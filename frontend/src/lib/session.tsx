@@ -14,6 +14,8 @@ type Session = {
   auth: AuthView | null;
   checking: boolean;
   expired: boolean;
+  /** The ended session was a visitor sandbox: show the visitor page instead of the sign-in notice. */
+  visitorEnded: boolean;
   problem: unknown;
   setAuth: (auth: AuthView | null) => void;
   check: () => void;
@@ -25,11 +27,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   current.current = auth;
   const [checking, setChecking] = useState(true);
   const [expired, setExpired] = useState(false);
+  const [visitorEnded, setVisitorEnded] = useState(false);
   const [problem, setProblem] = useState<unknown>(null);
   const [revision, setRevision] = useState(0);
   const setAuth = useCallback((value: AuthView | null) => {
     update(value);
     setExpired(false);
+    setVisitorEnded(false);
     setProblem(null);
   }, []);
   useEffect(() => {
@@ -53,7 +57,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [revision]);
   useEffect(() => {
     function expire() {
-      if (current.current) setExpired(true);
+      if (current.current?.visitor) setVisitorEnded(true);
+      else if (current.current) setExpired(true);
       update(null);
     }
     window.addEventListener("rootsentinel:session-expired", expire);
@@ -66,6 +71,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         auth,
         checking,
         expired,
+        visitorEnded,
         problem,
         setAuth,
         check: () => setRevision((x) => x + 1),
@@ -74,6 +80,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       {children}
     </Context.Provider>
   );
+}
+/** Analysts and administrators; employees and visitors see their own records only. */
+export function isPrivileged(role: string) {
+  return role === "ADMIN" || role === "ANALYST";
 }
 export function useSession() {
   const value = useContext(Context);

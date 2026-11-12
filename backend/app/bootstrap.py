@@ -123,6 +123,12 @@ def system_actor(db: Database) -> Principal:
         return Principal(system.id, system.username, "ADMIN", "bootstrap")
 
 
+def mark_synthetic(db: Database) -> int:
+    """Flag the seed assets as the synthetic set that visitor scans match. Idempotent; assets are not append-only."""
+    with db.transaction() as s:
+        return s.execute(update(Asset).where(Asset.label.in_(list(SEEDS)), Asset.synthetic.is_(False)).values(synthetic=True)).rowcount
+
+
 def seed_assets(db: Database, audit: AuditService) -> dict:
     with db.transaction() as s:
         missing = [label for label in SEEDS if s.scalar(select(Asset.id).where(Asset.label == label)) is None]
@@ -213,6 +219,7 @@ def main(argv=None) -> int:
         else:
             print("accounts: no accounts file given; none changed")
         seeds = seed_assets(db, audit)
+        print(f"assets: marked synthetic={mark_synthetic(db)}")
         print(f"assets: seeded={seeds['seeded']} existing={seeds['existing']}")
         print(f"profiles: seed assets given missing fingerprints={rebuild_seed_profiles(db, audit)}")
         print(f"policy: rule set {RULE_SET_V2} {'activated' if activate_rule_set(db, audit) else 'not changed'}")

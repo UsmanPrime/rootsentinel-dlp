@@ -73,6 +73,17 @@ jobs:
           done
           python -B scripts/browser_phase04.py
           python -B scripts/browser_phase04_negative.py
+          # The visitor journey runs on its own harness: visitor mode on, the synthetic seed assets registered.
+          kill "$backend_pid" 2>/dev/null || true
+          export ROOTSENTINEL_BROWSER_STATE="$RUNNER_TEMP/rootsentinel-browser-visitor-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          export ROOTSENTINEL_BROWSER_VISITOR=1 ROOTSENTINEL_ORIGIN=http://127.0.0.1:5174 ROOTSENTINEL_API_PORT=5174
+          (cd backend && python -B -m tests.browser_server) > "$RUNNER_TEMP/rootsentinel-api-visitor.log" 2>&1 &
+          backend_pid=$!
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:5174/health > /dev/null && curl -fsS http://127.0.0.1:5174/login > /dev/null; then break; fi
+            sleep 1
+          done
+          python -B scripts/browser_visitor.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
@@ -80,6 +91,7 @@ jobs:
           path: |
             ${{ runner.temp }}/rootsentinel-browser-evidence/browser-report.json
             ${{ runner.temp }}/rootsentinel-browser-evidence/negative-browser-report.json
+            ${{ runner.temp }}/rootsentinel-browser-evidence/visitor-browser-report.json
   postgres:
     runs-on: ubuntu-latest
     services:

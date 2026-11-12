@@ -86,3 +86,10 @@ the user and CSRF token when the cookie is a valid session, and 204 when there i
 it never answers 401, so a signed-out page load logs no failed request. It reveals only
 what `/auth/me` already reveals. `GET /api/v1/auth/me` is unchanged and answers 401 when
 signed out.
+
+## Visitor sessions
+
+The role `VISITOR` belongs to a sandbox created by `POST /auth/visitor` ([visitor mode](visitor-mode.md)). Its session
+has an absolute lifetime of 30 minutes and an idle lifetime of 10 minutes, the same cookie flags as every session, and a
+default-deny route allowlist. A visitor account holds no usable password, so sign-in refuses it, and no route changes a
+role. Sign-in, which does Argon2 work, is unaffected by every visitor cap.
