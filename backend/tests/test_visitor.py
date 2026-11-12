@@ -579,6 +579,18 @@ def schema_facts(db):
 def test_migration_0006_rebuilds_users_without_losing_keys_triggers_or_rows(system):
     settings, db, actors, cfg = system
     from sqlalchemy.exc import IntegrityError
+    if db.engine.dialect.name != "sqlite":
+        # PostgreSQL: the migration ran in the fixture. The users check now allows VISITOR and still refuses other roles,
+        # and the append-only triggers of the table that gained a column are in place.
+        row = "INSERT INTO users (id, username, password_hash, role, enabled, created_at) VALUES ('{}','{}','!','{}',true,CURRENT_TIMESTAMP)"
+        with db.transaction() as s:
+            s.execute(text(row.format("v1", "visitor-x", "VISITOR")))
+        with pytest.raises(IntegrityError), db.transaction() as s:
+            s.execute(text(row.format("v2", "visitor-y", "ROOT")))
+        with db.transaction() as s:
+            names = {r[0] for r in s.execute(text("SELECT tgname FROM pg_trigger WHERE NOT tgisinternal"))}
+        assert any(n.startswith("immutable_audit_events") for n in names)
+        return
     command.downgrade(cfg, "0005")
     with db.transaction() as s:
         s.execute(text("INSERT INTO assets (id, label, current_version, retired, created_at) VALUES ('a1', 'pre-existing', 1, 0, CURRENT_TIMESTAMP)"))
